@@ -25,11 +25,11 @@ export class Goal {
     this.group = new THREE.Group()
     this.time = 0
 
-    // pozice: pevnina, dostatečně daleko od spawnu
+    // pozice: pevnina, dostatečně daleko od spawnu (256 ostrov → min 70 bloků)
     let pos = null
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 200; i++) {
       const candidate = world.randomLandPosition(1)
-      if (!avoidPos || candidate.distanceTo(avoidPos) > 22) { pos = candidate; break }
+      if (!avoidPos || candidate.distanceTo(avoidPos) > 70) { pos = candidate; break }
       pos = candidate // fallback — poslední pokus
     }
     this.pos = new THREE.Vector3(pos.x, pos.y + 0.5, pos.z)
@@ -62,7 +62,7 @@ export class Goal {
     this.group.add(this.block)
 
     // beacon — sloup světla do nebe (additive, chytá bloom)
-    const beamGeo = new THREE.CylinderGeometry(0.32, 0.62, 70, 12, 1, true)
+    const beamGeo = new THREE.CylinderGeometry(0.32, 0.62, 110, 12, 1, true)
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0x8fd8ff,
       transparent: true,
@@ -72,7 +72,7 @@ export class Goal {
       side: THREE.DoubleSide,
     })
     this.beam = new THREE.Mesh(beamGeo, beamMat)
-    this.beam.position.set(this.pos.x, this.pos.y + 35, this.pos.z)
+    this.beam.position.set(this.pos.x, this.pos.y + 55, this.pos.z)
     this.group.add(this.beam)
 
     // jemná zář kolem bloku

@@ -3,8 +3,8 @@
 import * as THREE from 'three'
 import { createNoise2D } from 'simplex-noise'
 
-export const SIZE = 64        // půdorys ostrova v blocích
-export const HEIGHT = 28      // max výška sloupce
+export const SIZE = 256       // půdorys ostrova v blocích
+export const HEIGHT = 30      // max výška sloupce
 export const WATER_LEVEL = 4  // index bloku hladiny; vodní plocha ~y=4.3
 
 // Block IDs
@@ -193,9 +193,11 @@ export class World {
         const nx = (x - C) / C, nz = (z - C) / C
         const d = Math.sqrt(nx * nx + nz * nz)
         const falloff = Math.max(0, 1 - d * d * 1.45)
-        const base = this.noise2D(x * 0.045, z * 0.045) * 0.5 + 0.5
-        const detail = this.noiseDetail(x * 0.16, z * 0.16) * 0.5 + 0.5
-        let h = Math.floor((base * 0.72 + detail * 0.28) * 15 * falloff + 2)
+        // větší ostrov → nižší frekvence pro velké tvary + střední a jemný detail
+        const base = this.noise2D(x * 0.013, z * 0.013) * 0.5 + 0.5
+        const mid = this.noise2D(x * 0.045, z * 0.045) * 0.5 + 0.5
+        const detail = this.noiseDetail(x * 0.14, z * 0.14) * 0.5 + 0.5
+        let h = Math.floor((base * 0.6 + mid * 0.27 + detail * 0.13) * 18 * falloff + 2)
         h = Math.max(2, Math.min(HEIGHT - 8, h)) // min 2 = mořské dno, strop kvůli palmám
         this.heightMap[z * SIZE + x] = h
 
@@ -214,8 +216,8 @@ export class World {
 
   _plantPalms() {
     const spots = []
-    const count = 7 + Math.floor(this.rng() * 4)
-    for (let i = 0; i < 300 && spots.length < count; i++) {
+    const count = 42 + Math.floor(this.rng() * 16)
+    for (let i = 0; i < 4000 && spots.length < count; i++) {
       const x = 6 + Math.floor(this.rng() * (SIZE - 12))
       const z = 6 + Math.floor(this.rng() * (SIZE - 12))
       const h = this.heightMap[z * SIZE + x]
@@ -286,7 +288,7 @@ export class World {
               const co = this.isSolid(nx + u[0] * su + v[0] * sv, ny + u[1] * su + v[1] * sv, nz + u[2] * su + v[2] * sv) ? 1 : 0
               const a = aoLevel(s1, s2, co)
               ao.push(a)
-              const bright = 1 - a * 0.17
+              const bright = 1 - a * 0.13 // jemnější AO — rohy méně tmavé
               colors.push(bright, bright, bright)
             }
 
@@ -330,7 +332,7 @@ export class World {
     heightTex.needsUpdate = true
 
     const waterY = WATER_LEVEL + 0.3
-    const geo = new THREE.PlaneGeometry(600, 600, 96, 96)
+    const geo = new THREE.PlaneGeometry(1600, 1600, 128, 128)
     geo.rotateX(-Math.PI / 2)
 
     this.waterUniforms = {
@@ -343,9 +345,9 @@ export class World {
       uIslandSize: { value: SIZE },
       uMaxH: { value: HEIGHT },
       uWaterY: { value: waterY },
-      uFogColor: { value: new THREE.Color(0xc4ddee) },
-      uFogNear: { value: 60 },
-      uFogFar: { value: 220 },
+      uFogColor: { value: new THREE.Color(0xc7dff0) },
+      uFogNear: { value: 90 },
+      uFogFar: { value: 420 },
     }
 
     const mat = new THREE.ShaderMaterial({
@@ -434,15 +436,15 @@ export class World {
   _buildClouds() {
     this.clouds = new THREE.Group()
     const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 14; i++) {
       const cloud = new THREE.Group()
       const parts = 3 + Math.floor(this.rng() * 4)
       for (let p = 0; p < parts; p++) {
-        const box = new THREE.Mesh(new THREE.BoxGeometry(4 + this.rng() * 5, 1.4, 3 + this.rng() * 4), mat)
-        box.position.set((this.rng() - 0.5) * 9, (this.rng() - 0.5) * 0.8, (this.rng() - 0.5) * 7)
+        const box = new THREE.Mesh(new THREE.BoxGeometry(6 + this.rng() * 8, 1.6, 4 + this.rng() * 6), mat)
+        box.position.set((this.rng() - 0.5) * 13, (this.rng() - 0.5) * 0.8, (this.rng() - 0.5) * 10)
         cloud.add(box)
       }
-      cloud.position.set(this.rng() * 220 - 78, 36 + this.rng() * 9, this.rng() * 220 - 78)
+      cloud.position.set(this.rng() * 600 - 170, 42 + this.rng() * 14, this.rng() * 600 - 170)
       cloud.userData.speed = 0.8 + this.rng() * 0.9
       this.clouds.add(cloud)
     }
@@ -451,7 +453,7 @@ export class World {
 
   // ── světlušky / prach ──
   _buildFireflies() {
-    const N = 140
+    const N = 420
     this.fireflyBase = new Float32Array(N * 3)
     this.fireflyPhase = new Float32Array(N)
     const pos = new Float32Array(N * 3)
@@ -478,7 +480,7 @@ export class World {
 
     for (const cloud of this.clouds.children) {
       cloud.position.x += cloud.userData.speed * dt
-      if (cloud.position.x > 150) cloud.position.x = -90
+      if (cloud.position.x > 450) cloud.position.x = -170
     }
 
     const pos = this.fireflies.geometry.attributes.position

@@ -1,6 +1,5 @@
 // main.js — orchestrace: renderer, osvětlení, obloha, post-processing, game loop.
 import * as THREE from 'three'
-import { Sky } from 'three/addons/objects/Sky.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
@@ -71,46 +70,88 @@ class Game {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 0.85
+    this.renderer.toneMappingExposure = 0.95
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     document.body.appendChild(this.renderer.domElement)
 
-    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 600)
+    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 2500)
   }
 
   _setupSceneBase() {
     this.scene = new THREE.Scene()
-    this.scene.fog = new THREE.Fog(0xc4ddee, 60, 220)
+    this.scene.fog = new THREE.Fog(0xc7dff0, 90, 420)
 
-    // slunce + obloha
-    const sunDir = new THREE.Vector3(0.55, 0.62, 0.42).normalize()
+    // slunce níž nad obzorem — Miami vibe, dlouhé stíny
+    const sunDir = new THREE.Vector3(0.62, 0.42, 0.48).normalize()
     this.sunDir = sunDir
 
-    this.sky = new Sky()
-    this.sky.scale.setScalar(2000)
-    const su = this.sky.material.uniforms
-    su.turbidity.value = 6
-    su.rayleigh.value = 1.8
-    su.mieCoefficient.value = 0.004
-    su.mieDirectionalG.value = 0.85
-    su.sunPosition.value.copy(sunDir)
+    // vlastní sky shader: tropická modř, viditelné slunce, růžovo-fialová
+    // strana u obzoru (Miami) — Three.js Sky se přepaloval do bíla
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: { uSunDir: { value: sunDir } },
+      vertexShader: /* glsl */`
+        varying vec3 vWorldPos;
+        void main() {
+          vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * viewMatrix * vec4(vWorldPos, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        uniform vec3 uSunDir;
+        varying vec3 vWorldPos;
+        void main() {
+          vec3 dir = normalize(vWorldPos - cameraPosition);
+          float h = dir.y;
+
+          // tropická azurová: sytá v zenitu, světlá tyrkysová u obzoru
+          vec3 zenith = vec3(0.07, 0.33, 0.78);
+          vec3 horizon = vec3(0.60, 0.84, 0.95);
+          vec3 col = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.5));
+
+          // Miami pás: růžovo-fialová u obzoru na straně slunce
+          vec2 dxz = normalize(dir.xz + vec2(1e-5));
+          vec2 sxz = normalize(uSunDir.xz + vec2(1e-5));
+          float az = dot(dxz, sxz) * 0.5 + 0.5;
+          float lowBand = pow(clamp(1.0 - h, 0.0, 1.0), 3.0);
+          vec3 pink = vec3(1.0, 0.45, 0.74);
+          vec3 viola = vec3(0.55, 0.34, 0.95);
+          vec3 miami = mix(pink, viola, clamp(h * 4.0 + 0.15, 0.0, 1.0));
+          col = mix(col, miami, smoothstep(0.2, 1.0, az) * lowBand * 0.9);
+
+          // sluneční kotouč + teplá záře kolem
+          float s = dot(dir, normalize(uSunDir));
+          float glow = pow(max(s, 0.0), 900.0) * 0.9 + pow(max(s, 0.0), 60.0) * 0.28;
+          col += vec3(1.0, 0.88, 0.70) * glow;
+          col += vec3(1.0, 0.95, 0.85) * smoothstep(0.99955, 0.99985, s) * 2.2;
+
+          // pod obzorem mořský opar
+          col = mix(col, vec3(0.72, 0.82, 0.90), smoothstep(0.0, -0.12, h));
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    })
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), skyMat)
+    this.sky.position.set(SIZE / 2, 0, SIZE / 2)
     this.scene.add(this.sky)
 
-    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x8b7355, 0.75)
+    // silnější ambient výplň = měkčí dojem stínů (stíněná místa nejsou černá)
+    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x9b8265, 1.1)
     this.scene.add(this.hemi)
 
-    this.sun = new THREE.DirectionalLight(0xfff2d8, 2.4)
-    this.sun.position.copy(sunDir).multiplyScalar(90).add(new THREE.Vector3(SIZE / 2, 0, SIZE / 2))
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.8)
+    this.sun.position.copy(sunDir).multiplyScalar(140).add(new THREE.Vector3(SIZE / 2, 0, SIZE / 2))
     this.sun.target.position.set(SIZE / 2, 0, SIZE / 2)
     this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(2048, 2048)
-    const d = 52
+    this.sun.shadow.mapSize.set(this.touch ? 2048 : 4096, this.touch ? 2048 : 4096)
+    const d = SIZE / 2 + 14
     this.sun.shadow.camera.left = -d
     this.sun.shadow.camera.right = d
     this.sun.shadow.camera.top = d
     this.sun.shadow.camera.bottom = -d
-    this.sun.shadow.camera.near = 20
-    this.sun.shadow.camera.far = 190
+    this.sun.shadow.camera.near = 5
+    this.sun.shadow.camera.far = 380
     this.sun.shadow.bias = -0.0004
     this.sun.shadow.normalBias = 0.03
     this.scene.add(this.sun)
