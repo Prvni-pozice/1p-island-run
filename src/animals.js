@@ -144,7 +144,7 @@ class Animal {
     g.position.copy(this.pos)
   }
 
-  update(dt, playerPos) {
+  update(dt, playerPos, onHop) {
     this.t += dt
     this.modeT -= dt
     this.hopCooldown -= dt
@@ -181,6 +181,7 @@ class Animal {
     if (distToPlayer < 3.6 && this.hopCooldown <= 0 && this.hopY <= 0) {
       this.hopVel = 3.4
       this.hopCooldown = 3 + this.rng() * 2
+      if (onHop) onHop(this)
     }
     if (this.hopVel !== 0 || this.hopY > 0) {
       this.hopY += this.hopVel * dt
@@ -226,8 +227,8 @@ export class Animals {
     }
   }
 
-  update(dt, playerPos) {
-    for (const a of this.list) a.update(dt, playerPos)
+  update(dt, playerPos, onHop) {
+    for (const a of this.list) a.update(dt, playerPos, onHop)
   }
 
   dispose() {

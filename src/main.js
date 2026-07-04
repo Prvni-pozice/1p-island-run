@@ -12,6 +12,8 @@ import { Animals } from './animals.js'
 import { Goal } from './goal.js'
 import { Particles } from './particles.js'
 import { UI } from './ui.js'
+import { QualityManager } from './quality.js'
+import { AudioFX } from './audio.js'
 
 function mulberry32(seed) {
   let a = seed >>> 0
@@ -33,6 +35,17 @@ class Game {
     this._setupRenderer()
     this._setupSceneBase()
     this._setupPost()
+
+    this.audio = new AudioFX()
+    this.stepDistance = 0
+    this._prevPlayerXZ = null
+
+    const muteBtn = document.getElementById('mute-btn')
+    muteBtn.textContent = this.audio.muted ? '🔇' : '🔊'
+    muteBtn.addEventListener('click', () => {
+      this.audio.init()
+      muteBtn.textContent = this.audio.toggleMute() ? '🔇' : '🔊'
+    })
 
     this.controls = new Controls(this.renderer.domElement)
     this.controls.onLockLost = () => {
@@ -173,6 +186,14 @@ class Game {
       window.innerHeight * this.renderer.getPixelRatio(),
     )
     this.composer.addPass(this.smaa)
+
+    this.quality = new QualityManager({
+      renderer: this.renderer,
+      composer: this.composer,
+      bloom: this.bloom,
+      smaa: this.smaa,
+      isTouch: this.touch,
+    })
   }
 
   _buildRound() {
@@ -182,7 +203,10 @@ class Game {
 
     this.player = new Player(this.world)
     this.particles = new Particles(this.scene)
-    this.player.onSplash = pos => this.particles.splash(pos)
+    this.player.onSplash = pos => {
+      this.particles.splash(pos)
+      this.audio.splash()
+    }
 
     this.animals = new Animals(this.scene, this.world, mulberry32(seed ^ 0xabcdef), this.player.pos)
     this.goal = new Goal(this.scene, this.world, this.player.pos)
@@ -202,6 +226,7 @@ class Game {
     this.paused = false
     this.startTime = performance.now()
     this.elapsed = 0
+    this.audio.init() // user gesture — iOS vyžaduje
     this.controls.enabled = true
     this.controls.lock()
     this.ui.showPlaying(this.touch)
@@ -211,17 +236,37 @@ class Game {
     this.state = 'won'
     this.elapsed = performance.now() - this.startTime
     this.particles.confetti(this.goal.pos)
+    this.audio.fanfare()
     this.controls.enabled = false
     this.controls.unlock()
     this.ui.showWin(this.elapsed)
   }
 
   _tick() {
-    const dt = Math.min(this.clock.getDelta(), 0.05)
+    const rawDt = this.clock.getDelta()
+    this.quality.update(rawDt)
+    const dt = Math.min(rawDt, 0.05)
 
     if (this.state === 'playing' && !this.paused) {
       const move = this.controls.getMove()
       this.player.update(dt, move, this.controls.yaw, this.controls.jumpHeld)
+
+      // kroky: každé ~2.1 bloku ušlé po zemi
+      if (this._prevPlayerXZ && this.player.onGround && !this.player.inWater) {
+        this.stepDistance += Math.hypot(
+          this.player.pos.x - this._prevPlayerXZ.x,
+          this.player.pos.z - this._prevPlayerXZ.z,
+        )
+        if (this.stepDistance > 2.1) {
+          this.stepDistance = 0
+          this.audio.step()
+        }
+      }
+      this._prevPlayerXZ = { x: this.player.pos.x, z: this.player.pos.z }
+      if (this.player.justJumped) {
+        this.player.justJumped = false
+        this.audio.jump()
+      }
 
       this.elapsed = performance.now() - this.startTime
       this.ui.updateTimer(this.elapsed)
@@ -238,7 +283,7 @@ class Game {
 
     // svět žije i v menu (voda, mraky, zvířata, beacon)
     this.world.update(dt)
-    this.animals.update(dt, this.player.pos)
+    this.animals.update(dt, this.player.pos, () => this.audio.squeak())
     this.goal.update(dt)
     this.particles.update(dt)
 

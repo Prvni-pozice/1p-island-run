@@ -48,15 +48,28 @@ se jménem druhu.
 
 Placeholder logo lze znovu vygenerovat: `python3 scripts/generate_logo.py`.
 
+## Žebříček (leaderboard)
+
+Po doběhnutí hráč zadá jméno a uloží čas. Zobrazuje se **TOP 10 dneška**,
+**TOP 10 všech dob** a **ATH** (nejlepší čas všech dob). Na start screenu
+jsou první 3 + odkaz na kompletní výpis. Za hráče se počítá jeho nejlepší
+čas (deduplikace podle jména).
+
+Hra volá relativní `/api/scores` (GET žebříček / POST čas):
+
+- **Lokálně (VPS)**: obsluhuje middleware ve Vite serveru
+  (`vite.config.js`), data v `data/scores.json` (mimo git).
+- **Na Vercelu**: serverless funkce `api/scores.js` + **Vercel KV**.
+
 ## Deploy na Vercel
 
-Projekt je deploy-ready jako statický build:
-
-1. Import repozitáře do Vercelu
-2. Framework preset: **Vite** (detekuje se automaticky)
-3. Build command: `npm run build`, output: `dist/`
-
-Žádné env proměnné ani serverové funkce nejsou potřeba.
+1. Import repozitáře do Vercelu (framework preset **Vite**, build
+   `npm run build`, output `dist/` — detekuje se automaticky; složku
+   `/api` Vercel obslouží jako serverless funkce sám)
+2. **Žebříček**: v dashboardu Storage → Create Database → **KV (Upstash)**
+   → Connect to project. Tím vzniknou env proměnné `KV_REST_API_URL`
+   a `KV_REST_API_TOKEN`, funkce je použije automaticky.
+3. Bez KV hra funguje normálně, jen žebříček hlásí nedostupnost (501).
 
 ## Technika
 
@@ -68,7 +81,13 @@ Projekt je deploy-ready jako statický build:
   animovaná pěna na hraně pláže
 - **Zvířata** — voxel boxy s fotografickými texturami, wander AI
   (chůze/pauza/otočka, respektují terén a vodu), poskočení při přiblížení
+- **Adaptivní kvalita** — sleduje FPS (EMA): pod ~27 FPS ubírá (pixel
+  ratio, bloom, SMAA), při stabilních 55+ FPS zase přidává; hystereze
+  a cooldown proti přepínání (`src/quality.js`)
+- **Zvuky** — generované WebAudio bez souborů: kroky, skok, šplouchnutí,
+  pípnutí zvířat, fanfára v cíli; mute tlačítko v HUD (`src/audio.js`)
 - **Struktura** — `src/world.js`, `player.js`, `controls.js`, `animals.js`,
-  `goal.js`, `ui.js`, `particles.js`, `main.js`
+  `goal.js`, `ui.js`, `particles.js`, `quality.js`, `audio.js`,
+  `leaderboard.js`, `main.js` + `api/scores.js` (Vercel)
 
 Cílový výkon: 60 FPS na iPhone 13 Pro a novějších (minimum 30 FPS).

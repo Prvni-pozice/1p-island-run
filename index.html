@@ -89,6 +89,60 @@
       pointer-events: auto; display: flex; align-items: center; justify-content: center;
     }
     #jump-btn:active { background: rgba(255, 179, 71, 0.5); }
+
+    /* ── žebříček ── */
+    .link-btn {
+      background: none !important; border: none; box-shadow: none !important;
+      color: #9fd0ff !important; font-size: 1rem !important; font-weight: 600;
+      padding: 10px !important; margin-top: 10px; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+    .board-mini {
+      margin-top: 16px; min-height: 0; font-size: 0.95rem;
+      display: flex; flex-direction: column; gap: 4px; align-items: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .board-mini .row { display: flex; gap: 10px; opacity: 0.9; }
+    .board-mini .row .medal { width: 1.4em; }
+    .board-mini .row .name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .board-mini .muted { opacity: 0.55; font-size: 0.85rem; }
+    .board-cols {
+      display: flex; gap: 40px; flex-wrap: wrap; justify-content: center;
+      margin: 10px 0 18px; max-width: 640px;
+    }
+    .board-col h2 { font-size: 1.05rem; margin-bottom: 10px; opacity: 0.85; }
+    .board-col ol {
+      list-style: none; counter-reset: rank; text-align: left;
+      font-variant-numeric: tabular-nums; font-size: 0.98rem;
+      display: flex; flex-direction: column; gap: 5px; min-width: 240px;
+    }
+    .board-col ol li {
+      counter-increment: rank; display: flex; gap: 10px; align-items: baseline;
+    }
+    .board-col ol li::before {
+      content: counter(rank) "."; opacity: 0.5; width: 1.6em; text-align: right;
+    }
+    .board-col ol li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+    .board-col ol li .time { font-weight: 600; }
+    .board-col ol li.empty { opacity: 0.45; font-style: italic; }
+    .ath-line {
+      margin: 4px 0 22px; padding: 8px 22px; border-radius: 999px;
+      background: rgba(255, 179, 71, 0.14); border: 1px solid rgba(255, 200, 120, 0.4);
+      color: #ffdfa8; font-weight: 600;
+    }
+    .ath-line:empty { display: none; }
+    .save-score { display: flex; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; justify-content: center; }
+    .save-score input {
+      font-size: 1.05rem; padding: 12px 16px; border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(8, 24, 40, 0.6);
+      color: #eaf4ff; outline: none; width: 210px; text-align: center;
+    }
+    .save-score input:focus { border-color: rgba(255, 200, 120, 0.7); }
+    .save-score button {
+      font-size: 1.05rem !important; padding: 12px 26px !important;
+    }
+    .save-score.done { display: none; }
+    #board-close { margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -106,14 +160,37 @@
     </div>
     <button id="start-btn">▶&nbsp; Hrát</button>
     <div class="best-line" id="start-best"></div>
+    <div class="board-mini" id="start-top3"></div>
+    <button class="link-btn" id="board-link">🏆 Nejlepší hráči →</button>
+  </div>
+
+  <div id="board-overlay" class="overlay hidden">
+    <h1>🏆 Nejlepší hráči</h1>
+    <div class="board-cols">
+      <div class="board-col">
+        <h2>Dnes — TOP 10</h2>
+        <ol id="board-today"></ol>
+      </div>
+      <div class="board-col">
+        <h2>Všech dob — TOP 10</h2>
+        <ol id="board-alltime"></ol>
+      </div>
+    </div>
+    <div class="ath-line" id="board-ath"></div>
+    <button id="board-close">Zavřít</button>
   </div>
 
   <div id="win-overlay" class="overlay hidden">
     <h1>Cíl! 🏁</h1>
     <div class="final-time" id="final-time">0:00.00</div>
     <div class="record-badge" id="record-badge">🏆 Nový rekord!</div>
-    <div class="best-line" id="win-best" style="margin-bottom: 26px;"></div>
-    <button id="replay-btn">↻&nbsp; Hrát znovu (nový ostrov)</button>
+    <div class="best-line" id="win-best"></div>
+    <div class="save-score" id="save-score">
+      <input id="player-name" maxlength="24" placeholder="Tvoje jméno" autocomplete="off" />
+      <button id="save-score-btn">Uložit čas</button>
+    </div>
+    <div class="board-mini" id="win-board"></div>
+    <button id="replay-btn" style="margin-top: 18px;">↻&nbsp; Hrát znovu (nový ostrov)</button>
   </div>
 
   <div id="resume-overlay" class="overlay hidden">
@@ -124,6 +201,7 @@
   <div id="hud">
     <div class="pill"><small>ČAS</small><span id="hud-time">0:00.0</span></div>
     <div class="pill"><small>REKORD</small><span id="hud-best">—</span></div>
+    <button class="pill" id="mute-btn" style="pointer-events: auto; cursor: pointer;">🔊</button>
   </div>
 
   <div id="touch-ui">

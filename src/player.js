@@ -73,6 +73,7 @@ export class Player {
       if (jump && this.onGround) {
         this.vel.y = JUMP_SPEED
         this.onGround = false
+        this.justJumped = true // přečte a smaže main (zvuk)
       }
     }
 
