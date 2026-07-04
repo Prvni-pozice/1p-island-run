@@ -143,7 +143,7 @@ class Game {
     this.particles = new Particles(this.scene)
     this.player.onSplash = pos => this.particles.splash(pos)
 
-    this.animals = new Animals(this.scene, this.world, mulberry32(seed ^ 0xabcdef))
+    this.animals = new Animals(this.scene, this.world, mulberry32(seed ^ 0xabcdef), this.player.pos)
     this.goal = new Goal(this.scene, this.world, this.player.pos)
     this.paused = false
   }

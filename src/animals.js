@@ -55,8 +55,28 @@ function loadSpeciesMaterials(spec, loader) {
   return { head: make('head.jpg', 'head'), body: make('body.jpg', 'body'), side: make('side.jpg', 'side') }
 }
 
+// Najde kousek pevniny poblíž středu (spawn hráče) — zvířata se objeví kolem.
+// Kontrola groundHeight == terrainHeight vyloučí vršky palem.
+function landNear(world, center, rng, rMin = 3.5, rMax = 13) {
+  if (center) {
+    for (let i = 0; i < 200; i++) {
+      const ang = rng() * Math.PI * 2
+      const r = rMin + rng() * (rMax - rMin)
+      const x = center.x + Math.cos(ang) * r
+      const z = center.z + Math.sin(ang) * r
+      if (x < 2 || z < 2 || x > SIZE - 2 || z > SIZE - 2) continue
+      const th = world.terrainHeight(x, z)
+      const gh = world.groundHeight(x, z)
+      if (th > WATER_LEVEL && Math.abs(gh - th) < 0.5) {
+        return new THREE.Vector3(x, gh, z)
+      }
+    }
+  }
+  return world.randomLandPosition(1)
+}
+
 class Animal {
-  constructor(spec, mats, world, rng) {
+  constructor(spec, mats, world, rng, spawnCenter) {
     this.spec = spec
     this.world = world
     this.rng = rng
@@ -110,8 +130,8 @@ class Animal {
 
     this.group = g
 
-    // AI stav
-    const p = world.randomLandPosition(1)
+    // AI stav — spawn poblíž hráče (rozprchnou se samy)
+    const p = landNear(world, spawnCenter, rng)
     this.pos = new THREE.Vector3(p.x, p.y, p.z)
     this.dir = rng() * Math.PI * 2
     this.mode = 'idle'
@@ -186,7 +206,7 @@ class Animal {
 }
 
 export class Animals {
-  constructor(scene, world, rng) {
+  constructor(scene, world, rng, spawnCenter = null) {
     this.scene = scene
     this.list = []
     this.loader = new THREE.TextureLoader()
@@ -199,7 +219,7 @@ export class Animals {
       const mats = this.materials.get(spec.id)
       const n = spec.count[0] + Math.floor(rng() * (spec.count[1] - spec.count[0] + 1))
       for (let i = 0; i < n; i++) {
-        const a = new Animal(spec, mats, world, rng)
+        const a = new Animal(spec, mats, world, rng, spawnCenter)
         this.list.push(a)
         scene.add(a.group)
       }

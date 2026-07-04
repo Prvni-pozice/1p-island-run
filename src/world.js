@@ -290,11 +290,13 @@ export class World {
               colors.push(bright, bright, bright)
             }
 
-            // flip diagonály podle AO (anizotropie quadu)
+            // flip diagonály podle AO (anizotropie quadu); winding CCW při
+            // pohledu zvenku (u×v rohového pořadí míří DOVNITŘ, proto je
+            // pořadí indexů obrácené — jinak backface culling stěny zahodí)
             if (ao[0] + ao[2] > ao[1] + ao[3]) {
-              indices.push(vi + 1, vi + 2, vi + 3, vi + 1, vi + 3, vi + 0)
+              indices.push(vi + 1, vi + 3, vi + 2, vi + 1, vi + 0, vi + 3)
             } else {
-              indices.push(vi + 0, vi + 1, vi + 2, vi + 0, vi + 2, vi + 3)
+              indices.push(vi + 0, vi + 2, vi + 1, vi + 0, vi + 3, vi + 2)
             }
             vi += 4
           }
