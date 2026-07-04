@@ -50,10 +50,11 @@ async function kvSet(url, token, store) {
 }
 
 export default async function handler(req, res) {
-  const url = process.env.KV_REST_API_URL
-  const token = process.env.KV_REST_API_TOKEN
+  // Vercel KV (classic) i marketplace Upstash integrace — různé názvy env
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
   if (!url || !token) {
-    res.status(501).json({ error: 'Žebříček není nakonfigurován (chybí Vercel KV).' })
+    res.status(501).json({ error: 'Žebříček není nakonfigurován (chybí Vercel KV / Upstash).' })
     return
   }
 
