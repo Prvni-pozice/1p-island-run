@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>1P Island Run</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a1a2a;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    canvas { display: block; }
+
+    .overlay {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(6, 18, 32, 0.82);
+      color: #eaf4ff; text-align: center; padding: 24px;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 {
+      font-size: clamp(2.2rem, 8vw, 4rem); letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #ffe9a8, #ffb347);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      text-shadow: 0 4px 24px rgba(255, 179, 71, 0.25);
+      margin-bottom: 8px;
+    }
+    .overlay .subtitle { font-size: 1.05rem; opacity: 0.85; margin-bottom: 26px; }
+    .overlay .instructions {
+      font-size: 0.95rem; line-height: 1.7; opacity: 0.75; margin-bottom: 30px; max-width: 420px;
+    }
+    .overlay button {
+      font-size: 1.25rem; font-weight: 600; color: #08243c;
+      background: linear-gradient(180deg, #ffe9a8, #ffb347);
+      border: none; border-radius: 14px; padding: 16px 52px; cursor: pointer;
+      box-shadow: 0 6px 24px rgba(255, 179, 71, 0.35);
+      transition: transform 0.12s ease;
+    }
+    .overlay button:active { transform: scale(0.96); }
+    .overlay .best-line { margin-top: 20px; font-size: 0.95rem; opacity: 0.7; }
+
+    #win-overlay h1 { background: linear-gradient(180deg, #b8ffd0, #3ddc84); -webkit-background-clip: text; background-clip: text; }
+    #win-overlay .final-time { font-size: clamp(2.6rem, 10vw, 4.4rem); font-weight: 700; margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
+    #win-overlay .record-badge {
+      display: none; margin: 6px 0 18px; padding: 6px 18px; border-radius: 999px;
+      background: rgba(61, 220, 132, 0.18); color: #7dffb0; font-weight: 600; font-size: 1rem;
+      border: 1px solid rgba(61, 220, 132, 0.45);
+    }
+    #win-overlay .record-badge.show { display: inline-block; }
+
+    #resume-overlay { background: rgba(6, 18, 32, 0.6); }
+
+    #hud {
+      position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0; z-index: 10;
+      display: none; justify-content: center; gap: 14px; padding: 12px;
+      pointer-events: none; color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    #hud.visible { display: flex; }
+    #hud .pill {
+      background: rgba(8, 24, 40, 0.55); border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px; padding: 8px 18px; font-size: 1.05rem; font-weight: 600;
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    }
+    #hud .pill small { font-weight: 400; opacity: 0.65; margin-right: 6px; }
+
+    #touch-ui { position: fixed; inset: 0; z-index: 5; display: none; pointer-events: none; }
+    #touch-ui.visible { display: block; }
+    #joystick-base {
+      position: absolute; width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.25);
+      display: none; transform: translate(-50%, -50%);
+    }
+    #joystick-knob {
+      position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.35); transform: translate(-50%, -50%);
+    }
+    #jump-btn {
+      position: absolute; right: 26px; bottom: calc(34px + env(safe-area-inset-bottom, 0));
+      width: 86px; height: 86px; border-radius: 50%;
+      background: rgba(255, 179, 71, 0.28); border: 2px solid rgba(255, 200, 120, 0.55);
+      color: #ffe9c4; font-size: 0.95rem; font-weight: 700;
+      pointer-events: auto; display: flex; align-items: center; justify-content: center;
+    }
+    #jump-btn:active { background: rgba(255, 179, 71, 0.5); }
+  </style>
+</head>
+<body>
+  <div id="start-screen" class="overlay">
+    <h1>1P Island Run</h1>
+    <div class="subtitle">Najdi zářící blok 1P na tropickém ostrově — co nejrychleji!</div>
+    <div class="instructions" id="instructions-desktop">
+      <b>WASD</b> – pohyb &nbsp;·&nbsp; <b>myš</b> – rozhled &nbsp;·&nbsp; <b>mezerník</b> – skok<br>
+      Sleduj sloup světla na obzoru. Cestou potkáš kapybary, morčata, křečky, quokky i činčily.
+    </div>
+    <div class="instructions" id="instructions-mobile" style="display:none">
+      <b>Levý palec</b> – pohyb (virtuální joystick)<br>
+      <b>Pravý palec</b> – rozhled tažením &nbsp;·&nbsp; <b>tlačítko</b> – skok<br>
+      Sleduj sloup světla na obzoru!
+    </div>
+    <button id="start-btn">▶&nbsp; Hrát</button>
+    <div class="best-line" id="start-best"></div>
+  </div>
+
+  <div id="win-overlay" class="overlay hidden">
+    <h1>Cíl! 🏁</h1>
+    <div class="final-time" id="final-time">0:00.00</div>
+    <div class="record-badge" id="record-badge">🏆 Nový rekord!</div>
+    <div class="best-line" id="win-best" style="margin-bottom: 26px;"></div>
+    <button id="replay-btn">↻&nbsp; Hrát znovu (nový ostrov)</button>
+  </div>
+
+  <div id="resume-overlay" class="overlay hidden">
+    <div class="subtitle">Hra pozastavena</div>
+    <button id="resume-btn">Pokračovat</button>
+  </div>
+
+  <div id="hud">
+    <div class="pill"><small>ČAS</small><span id="hud-time">0:00.0</span></div>
+    <div class="pill"><small>REKORD</small><span id="hud-best">—</span></div>
+  </div>
+
+  <div id="touch-ui">
+    <div id="joystick-base"><div id="joystick-knob"></div></div>
+    <button id="jump-btn">SKOK</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
