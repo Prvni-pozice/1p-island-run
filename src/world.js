@@ -288,7 +288,7 @@ export class World {
               const co = this.isSolid(nx + u[0] * su + v[0] * sv, ny + u[1] * su + v[1] * sv, nz + u[2] * su + v[2] * sv) ? 1 : 0
               const a = aoLevel(s1, s2, co)
               ao.push(a)
-              const bright = 1 - a * 0.13 // jemnější AO — rohy méně tmavé
+              const bright = 1 - a * 0.085 // jemné AO — rohy jen lehce ztmavené
               colors.push(bright, bright, bright)
             }
 

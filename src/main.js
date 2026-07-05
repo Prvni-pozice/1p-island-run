@@ -83,7 +83,7 @@ class Game {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 0.95
+    this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     document.body.appendChild(this.renderer.domElement)
 
@@ -123,15 +123,20 @@ class Game {
           vec3 horizon = vec3(0.60, 0.84, 0.95);
           vec3 col = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.5));
 
-          // Miami pás: růžovo-fialová u obzoru na straně slunce
+          // Miami západ slunce: přechod oranžová → růžová → fialová, pokrývá
+          // ~polovinu výhledu (strana slunce) a sahá vysoko po obloze
           vec2 dxz = normalize(dir.xz + vec2(1e-5));
           vec2 sxz = normalize(uSunDir.xz + vec2(1e-5));
           float az = dot(dxz, sxz) * 0.5 + 0.5;
-          float lowBand = pow(clamp(1.0 - h, 0.0, 1.0), 3.0);
-          vec3 pink = vec3(1.0, 0.45, 0.74);
-          vec3 viola = vec3(0.55, 0.34, 0.95);
-          vec3 miami = mix(pink, viola, clamp(h * 4.0 + 0.15, 0.0, 1.0));
-          col = mix(col, miami, smoothstep(0.2, 1.0, az) * lowBand * 0.9);
+          float sunAz = smoothstep(0.12, 0.72, az);          // ~polovina azimutu
+          float height = pow(clamp(1.0 - h, 0.0, 1.0), 1.15); // dosah vysoko
+          vec3 mOrange = vec3(1.00, 0.53, 0.26);
+          vec3 mPink   = vec3(1.00, 0.40, 0.66);
+          vec3 mViolet = vec3(0.54, 0.33, 0.93);
+          float hh = clamp(h * 2.1, 0.0, 1.0);
+          vec3 miami = mix(mOrange, mPink, smoothstep(0.0, 0.45, hh));
+          miami = mix(miami, mViolet, smoothstep(0.4, 1.0, hh));
+          col = mix(col, miami, sunAz * height * 0.92);
 
           // sluneční kotouč + teplá záře kolem
           float s = dot(dir, normalize(uSunDir));
@@ -149,11 +154,16 @@ class Game {
     this.sky.position.set(SIZE / 2, 0, SIZE / 2)
     this.scene.add(this.sky)
 
-    // silnější ambient výplň = měkčí dojem stínů (stíněná místa nejsou černá)
-    this.hemi = new THREE.HemisphereLight(0xbfe3ff, 0x9b8265, 1.1)
+    // silná ambient výplň = odstíněná místa září barvou, ne černotou.
+    // Hemisféra osvětluje stinné strany (obloha shora, teplý odraz písku
+    // zdola), plochý ambient nadzvedne absolutní černou.
+    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0xc2a988, 1.75)
     this.scene.add(this.hemi)
+    this.ambient = new THREE.AmbientLight(0xdce8ff, 0.32)
+    this.scene.add(this.ambient)
 
-    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.8)
+    // přímé slunce mírnější → menší kontrast, stíny zůstávají čitelné ale měkčí
+    this.sun = new THREE.DirectionalLight(0xfff2d6, 1.35)
     this.sun.position.copy(sunDir).multiplyScalar(140).add(new THREE.Vector3(SIZE / 2, 0, SIZE / 2))
     this.sun.target.position.set(SIZE / 2, 0, SIZE / 2)
     this.sun.castShadow = true
