@@ -288,9 +288,11 @@ class Game {
           this.player.pos.x - this._prevPlayerXZ.x,
           this.player.pos.z - this._prevPlayerXZ.z,
         )
-        if (this.stepDistance > 2.1) {
+        // v louce zní šustění trávy místo kroků
+        if (this.stepDistance > (this.world.inMeadow(this.player.pos.x, this.player.pos.z) ? 1.3 : 2.1)) {
           this.stepDistance = 0
-          this.audio.step()
+          if (this.world.inMeadow(this.player.pos.x, this.player.pos.z)) this.audio.grass()
+          else this.audio.step()
         }
       }
       this._prevPlayerXZ = { x: this.player.pos.x, z: this.player.pos.z }

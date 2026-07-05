@@ -45,17 +45,17 @@ function buildAtlasTexture() {
   canvas.width = 128; canvas.height = 128
   const ctx = canvas.getContext('2d')
 
-  drawTile(ctx, 0, 0, [96, 168, 68], 0.05)                    // grass top
-  drawTile(ctx, 1, 0, [134, 100, 70], 0.05, (c, ox, oy, S, rng) => { // grass side
+  drawTile(ctx, 0, 0, [104, 186, 74], 0.055)                  // grass top (sytější zeleň)
+  drawTile(ctx, 1, 0, [172, 130, 88], 0.05, (c, ox, oy, S, rng) => { // grass side (světlejší hlína)
     for (let x = 0; x < S; x++) {
       const h = 5 + Math.floor(rng() * 4)
       for (let y = 0; y < h; y++) {
-        c.fillStyle = `rgb(${86 + rng() * 24 | 0},${158 + rng() * 24 | 0},${60 + rng() * 20 | 0})`
+        c.fillStyle = `rgb(${94 + rng() * 26 | 0},${172 + rng() * 26 | 0},${64 + rng() * 22 | 0})`
         c.fillRect(ox + x, oy + y, 1, 1)
       }
     }
   })
-  drawTile(ctx, 2, 0, [134, 100, 70], 0.06)                   // dirt
+  drawTile(ctx, 2, 0, [172, 130, 88], 0.06)                   // dirt (světlejší, čitelnější stěny)
   drawTile(ctx, 3, 0, [128, 130, 134], 0.05, (c, ox, oy, S, rng) => { // stone specks
     for (let i = 0; i < 26; i++) {
       c.fillStyle = 'rgba(70,72,76,0.55)'
@@ -159,6 +159,13 @@ export class World {
     this.blocks[this._idx(x, y, z)] = id
   }
   isSolid(x, y, z) { return this.getBlock(x, y, z) !== AIR }
+
+  // Je pozice uvnitř květnaté louky (8×8 patch)?
+  inMeadow(x, z) {
+    if (!this.meadow) return false
+    const { x0, z0 } = this.meadow
+    return x >= x0 && x < x0 + 8 && z >= z0 && z < z0 + 8
+  }
 
   // Nejvyšší pevný blok + 1 (= y kam lze postavit entitu)
   groundHeight(x, z) {
@@ -310,6 +317,17 @@ export class World {
     this.lava = new THREE.Mesh(geo, mat)
     this.lava.position.set(v.x + 0.5, v.craterFloorY + 0.7, v.z + 0.5)
     this.group.add(this.lava)
+
+    // žhnoucí prstenec lávy na okraji kráteru (na vrcholu)
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0x2a0f04, emissive: 0xff6a26, emissiveMap: lavaTex, map: lavaTex,
+      emissiveIntensity: 1.9, roughness: 0.65,
+    })
+    const ringGeo = new THREE.TorusGeometry(v.craterR - 0.5, 0.4, 10, 26)
+    ringGeo.rotateX(-Math.PI / 2)
+    this.lavaRing = new THREE.Mesh(ringGeo, ringMat)
+    this.lavaRing.position.set(v.x + 0.5, v.craterFloorY + 1.15, v.z + 0.5)
+    this.group.add(this.lavaRing)
 
     this.lavaLight = new THREE.PointLight(0xff6a22, 26, 34)
     this.lavaLight.position.set(v.x + 0.5, v.craterFloorY + 2.5, v.z + 0.5)
@@ -650,6 +668,7 @@ export class World {
     if (this.lava) {
       const glow = 1.5 + Math.sin(this.time * 2.4) * 0.35 + Math.sin(this.time * 7) * 0.1
       this.lava.material.emissiveIntensity = glow
+      if (this.lavaRing) this.lavaRing.material.emissiveIntensity = 1.7 + Math.sin(this.time * 2.4 + 1) * 0.4
       this.lavaLight.intensity = 22 + Math.sin(this.time * 2.4) * 6
       const sp = this.smoke.geometry.attributes.position
       for (let i = 0; i < this.smokeY.length; i++) {

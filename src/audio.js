@@ -84,6 +84,13 @@ export class AudioFX {
     this._noise({ dur: 0.4, filterType: 'lowpass', f0: 1400, f1: 260, gain: 0.7 })
   }
 
+  // šustění trávy / hrabání sena při chůzi loukou
+  grass() {
+    if (!this._ready()) return
+    this._noise({ dur: 0.14, filterType: 'highpass', f0: 1900, gain: 0.34 })
+    this._noise({ dur: 0.10, filterType: 'bandpass', f0: 2900 + Math.random() * 1000, gain: 0.24 })
+  }
+
   squeak() {
     if (!this._ready()) return
     const f = 750 + Math.random() * 700
