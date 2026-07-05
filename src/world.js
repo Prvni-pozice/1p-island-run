@@ -272,14 +272,26 @@ export class World {
     const craterDepth = 4
     // rim (okraj kráteru) = výška kužele v poloměru kráteru; uvnitř mísa
     const rimY = Math.round(peakH - (craterR / baseR) * (peakH - baseH))
+    // barevné pásy podle výšky (odspoda): zeleň → hnědá → šedá → láva navrchu
+    const span = Math.max(6, rimY - baseH)
+    const lavaFloorY = rimY - 1                                         // ≥2 vrchní vrstvy = láva
+    const stoneFloorY = lavaFloorY - Math.max(3, Math.round(span * 0.25)) // horní čtvrtina šedá
+    const dirtFloorY = stoneFloorY - 3                                 // pár hnědých vrstev
+    this.lavaCells = []
+    const lavaSet = new Set()
+    const addLava = (x, y, z) => {
+      const key = x + ',' + y + ',' + z
+      if (!lavaSet.has(key)) { lavaSet.add(key); this.lavaCells.push([x, y, z]) }
+    }
     for (let dz = -baseR; dz <= baseR; dz++) {
       for (let dx = -baseR; dx <= baseR; dx++) {
         const x = cx + dx, z = cz + dz
         if (x < 1 || z < 1 || x >= SIZE - 1 || z >= SIZE - 1) continue
         const d = Math.sqrt(dx * dx + dz * dz)
         if (d > baseR) continue
+        const inCrater = d < craterR
         let solidTop
-        if (d < craterR) {
+        if (inCrater) {
           // mísa: nejhlubší uprostřed, okraj = rimY (vyvýšený val)
           const bowl = craterDepth * (1 - (d / craterR) * (d / craterR))
           solidTop = Math.round(rimY - bowl)
@@ -287,12 +299,17 @@ export class World {
           solidTop = Math.round(peakH - (d / baseR) * (peakH - baseH)) // kužel
         }
         for (let y = 0; y <= solidTop; y++) {
-          if (!this.isSolid(x, y, z)) this.setBlock(x, y, z, STONE)
+          if (this.isSolid(x, y, z)) continue
+          const id = y >= stoneFloorY ? STONE : y >= dirtFloorY ? DIRT : GRASS
+          this.setBlock(x, y, z, id)
         }
         this.heightMap[z * SIZE + x] = Math.max(this.heightMap[z * SIZE + x], solidTop)
+        // lávová čepice: vrchní vrstvy sloupce v láva-pásu (viditelné z dálky)
+        if (solidTop >= lavaFloorY) for (let y = lavaFloorY; y <= solidTop; y++) addLava(x, y, z)
+        // lávové jezírko v míse (nad dnem po hladinu = rimY)
+        if (inCrater) for (let y = solidTop + 1; y <= rimY; y++) { this.setBlock(x, y, z, STONE); addLava(x, y, z) }
       }
     }
-    // dno mísy uprostřed = rimY - craterDepth; lávové jezírko sahá po rimY
     this.volcano = { x: cx, z: cz, craterR, rimY, craterDepth, bowlBottomY: rimY - craterDepth }
   }
 
@@ -317,22 +334,8 @@ export class World {
       color: 0x2a0f04, emissive: 0xff5a1e, emissiveMap: lavaTex, map: lavaTex,
       emissiveIntensity: 1.7, roughness: 0.7,
     })
-    // lávové jezírko vyplní mísu kráteru: od dna (dle sklonu mísy) po hladinu
-    // u okraje (rimY). Kostky tak sedí v míse, nelevitují.
-    const cubes = []
-    const cr = Math.ceil(v.craterR)
-    for (let dz = -cr; dz <= cr; dz++) {
-      for (let dx = -cr; dx <= cr; dx++) {
-        const d = Math.sqrt(dx * dx + dz * dz)
-        if (d >= v.craterR) continue // uvnitř valu
-        const bowl = v.craterDepth * (1 - (d / v.craterR) * (d / v.craterR))
-        const floorTop = Math.round(v.rimY - bowl) // pevné dno mísy zde
-        for (let y = floorTop + 1; y <= v.rimY; y++) { // láva po hladinu (rimY)
-          cubes.push([v.x + dx, y, v.z + dz])
-          this.setBlock(v.x + dx, y, v.z + dz, STONE) // kolize (mesh už hotový)
-        }
-      }
-    }
+    // lávové kostky = vrchní pás sopky + jezírko (spočítáno v _raiseVolcano)
+    const cubes = this.lavaCells
     this.lavaCubes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.lavaMat, cubes.length)
     const cmtx = new THREE.Matrix4()
     for (let i = 0; i < cubes.length; i++) {

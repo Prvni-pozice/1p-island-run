@@ -315,6 +315,8 @@ class Game {
     this.camera.rotateX(this.controls.pitch)
 
     // svět žije i v menu (voda, mraky, zvířata, beacon)
+    this._updateDinoMarkers()
+
     this.world.update(dt)
     this.animals.update(dt, this.player.pos, () => this.audio.squeak())
     const collectible = this.state === 'playing' && !this.paused
@@ -328,6 +330,61 @@ class Game {
     this.particles.update(dt)
 
     this.composer.render()
+  }
+
+  // Ukazatel dinosaurů: 🦕 značka nad každým nesebraným dinem; mimo obrazovku
+  // se přichytí k okraji (funguje jako šipka). Jen během hry.
+  _updateDinoMarkers() {
+    const container = document.getElementById('dino-markers')
+    const show = this.state === 'playing' && !this.paused
+    if (container.style.display !== (show ? 'block' : 'none')) {
+      container.style.display = show ? 'block' : 'none'
+    }
+    if (!show) return
+    if (!this._dinoMarkers) this._dinoMarkers = []
+    if (!this._markTmp) { this._markTmp = new THREE.Vector3(); this._markFwd = new THREE.Vector3() }
+
+    const W = window.innerWidth, H = window.innerHeight
+    const cx = W / 2, cy = H / 2, pad = 36
+    const camPos = this.camera.position
+    this.camera.getWorldDirection(this._markFwd)
+    let mi = 0
+
+    for (const d of this.dinos.list) {
+      if (d.collected || !d.group.visible) continue
+      let el = this._dinoMarkers[mi]
+      if (!el) {
+        el = document.createElement('div')
+        el.className = 'dino-marker'
+        el.innerHTML = '<span class="ic">🦕</span><span class="dist"></span>'
+        container.appendChild(el)
+        this._dinoMarkers[mi] = el
+      }
+      el.style.display = 'flex'
+
+      const t = this._markTmp
+      t.copy(d.group.position); t.y += 2.4
+      const behind = t.clone().sub(camPos).dot(this._markFwd) < 0
+      t.project(this.camera)
+      let sx = (t.x * 0.5 + 0.5) * W
+      let sy = (-t.y * 0.5 + 0.5) * H
+      if (behind) { sx = W - sx; sy = H - sy } // za kamerou → obrátit směr k okraji
+
+      const offscreen = behind || sx < pad || sx > W - pad || sy < pad || sy > H - pad
+      if (offscreen) {
+        let vx = sx - cx, vy = sy - cy
+        const len = Math.hypot(vx, vy) || 1
+        vx /= len; vy /= len
+        const scale = Math.min((cx - pad) / Math.max(Math.abs(vx), 1e-3), (cy - pad) / Math.max(Math.abs(vy), 1e-3))
+        sx = cx + vx * scale; sy = cy + vy * scale
+      }
+      el.style.left = sx + 'px'
+      el.style.top = sy + 'px'
+      el.classList.toggle('edge', offscreen)
+      if (!offscreen) el.querySelector('.dist').textContent = Math.round(camPos.distanceTo(d.group.position)) + ' m'
+      mi++
+    }
+    for (let j = mi; j < this._dinoMarkers.length; j++) this._dinoMarkers[j].style.display = 'none'
   }
 
   _onResize() {

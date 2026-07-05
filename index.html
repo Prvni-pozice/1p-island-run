@@ -77,6 +77,21 @@
       pointer-events: none; font-size: 2.4rem; font-weight: 800; color: #7dffb0;
       text-shadow: 0 2px 18px rgba(61, 220, 132, 0.6); opacity: 0;
     }
+    #dino-markers { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none; }
+    .dino-marker {
+      position: absolute; transform: translate(-50%, -50%);
+      display: flex; flex-direction: column; align-items: center;
+      font-variant-numeric: tabular-nums; will-change: left, top;
+    }
+    .dino-marker .ic { font-size: 1.5rem; line-height: 1; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
+    .dino-marker .dist {
+      font-size: 0.7rem; color: #cde7ff; background: rgba(8, 24, 40, 0.5);
+      padding: 1px 6px; border-radius: 8px; margin-top: 2px;
+    }
+    .dino-marker.edge { opacity: 0.92; }
+    .dino-marker.edge .ic { font-size: 1.15rem; }
+    .dino-marker.edge .dist { display: none; }
+
     #bonus-flash.show { animation: bonusPop 0.9s ease-out; }
     @keyframes bonusPop {
       0% { opacity: 0; transform: translateY(10px) scale(0.8); }
@@ -222,6 +237,7 @@
     <button class="pill" id="mute-btn" style="pointer-events: auto; cursor: pointer;">🔊</button>
   </div>
   <div id="bonus-flash"></div>
+  <div id="dino-markers"></div>
 
   <div id="touch-ui">
     <div id="joystick-base"><div id="joystick-knob"></div></div>
