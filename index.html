@@ -70,6 +70,21 @@
     }
     #hud .pill small { font-weight: 400; opacity: 0.65; margin-right: 6px; }
 
+    .instructions .tip { display: inline-block; margin-top: 10px; color: #b8ffd0; opacity: 0.9; }
+
+    #bonus-flash {
+      position: fixed; top: 24%; left: 0; right: 0; z-index: 11; text-align: center;
+      pointer-events: none; font-size: 2.4rem; font-weight: 800; color: #7dffb0;
+      text-shadow: 0 2px 18px rgba(61, 220, 132, 0.6); opacity: 0;
+    }
+    #bonus-flash.show { animation: bonusPop 0.9s ease-out; }
+    @keyframes bonusPop {
+      0% { opacity: 0; transform: translateY(10px) scale(0.8); }
+      20% { opacity: 1; transform: translateY(0) scale(1.1); }
+      70% { opacity: 1; transform: translateY(-6px) scale(1); }
+      100% { opacity: 0; transform: translateY(-28px) scale(1); }
+    }
+
     #touch-ui { position: fixed; inset: 0; z-index: 5; display: none; pointer-events: none; }
     #touch-ui.visible { display: block; }
     #joystick-base {
@@ -151,12 +166,14 @@
     <div class="subtitle">Najdi zářící blok 1P na tropickém ostrově — co nejrychleji!</div>
     <div class="instructions" id="instructions-desktop">
       <b>WASD</b> – pohyb &nbsp;·&nbsp; <b>myš</b> – rozhled &nbsp;·&nbsp; <b>mezerník</b> – skok<br>
-      Sleduj sloup světla na obzoru. Cestou potkáš kapybary, morčata, křečky, quokky i činčily.
+      Sleduj sloup světla na obzoru. Cestou potkáš kapybary, morčata, křečky, quokky i činčily.<br>
+      <span class="tip">🦕 Dotkni se dinosaura a získáš bonus <b>−10 s</b> z času — každého z 8 lze sebrat jen jednou. Na ostrově je i sopka a květnatá louka. 🌈</span>
     </div>
     <div class="instructions" id="instructions-mobile" style="display:none">
       <b>Levý palec</b> – pohyb (virtuální joystick)<br>
       <b>Pravý palec</b> – rozhled tažením &nbsp;·&nbsp; <b>tlačítko</b> – skok<br>
-      Sleduj sloup světla na obzoru!
+      Sleduj sloup světla na obzoru!<br>
+      <span class="tip">🦕 Dotkni se dinosaura = bonus <b>−10 s</b> (8 dinosaurů, každý jednou). Najdeš i sopku a květnatou louku. 🌈</span>
     </div>
     <button id="start-btn">▶&nbsp; Hrát</button>
     <div class="best-line" id="start-best"></div>
@@ -201,8 +218,10 @@
   <div id="hud">
     <div class="pill"><small>ČAS</small><span id="hud-time">0:00.0</span></div>
     <div class="pill"><small>REKORD</small><span id="hud-best">—</span></div>
+    <div class="pill"><small>🦕</small><span id="hud-dinos">0/8</span></div>
     <button class="pill" id="mute-btn" style="pointer-events: auto; cursor: pointer;">🔊</button>
   </div>
+  <div id="bonus-flash"></div>
 
   <div id="touch-ui">
     <div id="joystick-base"><div id="joystick-knob"></div></div>

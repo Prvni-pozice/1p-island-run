@@ -81,6 +81,12 @@ Hra volá relativní `/api/scores` (GET žebříček / POST čas):
   animovaná pěna na hraně pláže
 - **Zvířata** — voxel boxy s fotografickými texturami, wander AI
   (chůze/pauza/otočka, respektují terén a vodu), poskočení při přiblížení
+- **Sopka** — vždy jedna na ostrově: voxel kužel s kráterem, žhnoucí láva
+  (emissive + bloom), point light a stoupající kouř
+- **Dinosauři** — 8 sběratelných voxel dinosaurů; dotyk = jednorázový bonus
+  −10 s z času (server počítá net čas z hrubého, `dinos.js`)
+- **Květnatá louka** — plochý 8×8 patch s barevnými květinami (InstancedMesh)
+- **Duha** — na opačné straně oblohy než slunce (sky shader, ~42° oblouk)
 - **Adaptivní kvalita** — sleduje FPS (EMA): pod ~27 FPS ubírá (pixel
   ratio, bloom, SMAA), při stabilních 55+ FPS zase přidává; hystereze
   a cooldown proti přepínání (`src/quality.js`)

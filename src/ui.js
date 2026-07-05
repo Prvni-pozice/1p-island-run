@@ -29,8 +29,12 @@ export class UI {
     this.saveScoreBox = document.getElementById('save-score')
     this.nameInput = document.getElementById('player-name')
     this.lastBoard = null
-    this.lastRunMs = null
+    this.lastRunMs = null       // net čas (zobrazený/uložený)
+    this.lastRunRawMs = null    // hrubý čas (pro serverové ověření)
+    this.lastRunDinos = 0
     this.runToken = null
+    this.hudDinos = document.getElementById('hud-dinos')
+    this.bonusFlash = document.getElementById('bonus-flash')
 
     if (isTouch) {
       document.getElementById('instructions-desktop').style.display = 'none'
@@ -165,7 +169,7 @@ export class UI {
     btn.textContent = 'Ukládám…'
     try {
       if (!this.runToken) this.runToken = await requestSession() // fallback
-      this.lastBoard = await submitScore(name, this.lastRunMs, this.runToken)
+      this.lastBoard = await submitScore(name, this.lastRunRawMs, this.lastRunDinos, this.runToken)
       this.saveScoreBox.classList.add('done')
       this._renderAll()
     } catch (e) {
@@ -198,8 +202,18 @@ export class UI {
     this.resumeOverlay.classList.add('hidden')
     this.boardOverlay.classList.add('hidden')
     this.hud.classList.add('visible')
+    this.hudDinos.textContent = '0/8'
     document.getElementById('touch-ui').classList.toggle('visible', isTouch)
     this._refreshBestLabels()
+  }
+
+  // sběr dinosaura: HUD počítadlo + krátký blesk „−10 s"
+  flashBonus(count, total) {
+    this.hudDinos.textContent = `${count}/${total}`
+    this.bonusFlash.textContent = '🦕 −10 s!'
+    this.bonusFlash.classList.remove('show')
+    void this.bonusFlash.offsetWidth // restart animace
+    this.bonusFlash.classList.add('show')
   }
 
   updateTimer(ms) {
@@ -210,12 +224,14 @@ export class UI {
   }
 
   /** @returns true pokud jde o nový lokální rekord */
-  showWin(ms) {
+  showWin(ms, rawMs = ms, dinos = 0) {
     const prevBest = this.best
     const isRecord = !prevBest || ms < prevBest
     if (isRecord) localStorage.setItem(BEST_KEY, String(Math.round(ms)))
 
     this.lastRunMs = ms
+    this.lastRunRawMs = rawMs
+    this.lastRunDinos = dinos
     this.finalTime.textContent = formatTime(ms)
     this.recordBadge.classList.toggle('show', isRecord)
     const b = this.best

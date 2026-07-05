@@ -9,6 +9,7 @@ import { World, SIZE } from './world.js'
 import { Player } from './player.js'
 import { Controls, isTouchDevice } from './controls.js'
 import { Animals } from './animals.js'
+import { Dinos } from './dinos.js'
 import { Goal } from './goal.js'
 import { Particles } from './particles.js'
 import { UI } from './ui.js'
@@ -114,6 +115,10 @@ class Game {
       fragmentShader: /* glsl */`
         uniform vec3 uSunDir;
         varying vec3 vWorldPos;
+        vec3 hsv2rgb(vec3 c) {
+          vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
+          return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+        }
         void main() {
           vec3 dir = normalize(vWorldPos - cameraPosition);
           float h = dir.y;
@@ -138,6 +143,14 @@ class Game {
           miami = mix(miami, mViolet, smoothstep(0.4, 1.0, hh));
           col = mix(col, miami, sunAz * height * 0.92);
 
+          // duha na opačné straně než slunce (kolem anti-solárního bodu, ~40–42°)
+          float ra = degrees(acos(clamp(dot(dir, -uSunDir), -1.0, 1.0)));
+          float rt = (ra - 40.0) / 2.2;                       // 0=vnitřní fialová, 1=vnější červená
+          float arc = smoothstep(0.0, 0.12, rt) * smoothstep(1.0, 0.86, rt);
+          float aboveH = smoothstep(-0.03, 0.12, h);          // jen nad obzorem
+          vec3 rainbow = hsv2rgb(vec3((1.0 - clamp(rt, 0.0, 1.0)) * 0.72, 0.85, 1.0));
+          col = mix(col, rainbow, arc * aboveH * 0.45);
+
           // sluneční kotouč + teplá záře kolem
           float s = dot(dir, normalize(uSunDir));
           float glow = pow(max(s, 0.0), 900.0) * 0.9 + pow(max(s, 0.0), 60.0) * 0.28;
@@ -157,13 +170,13 @@ class Game {
     // silná ambient výplň = odstíněná místa září barvou, ne černotou.
     // Hemisféra osvětluje stinné strany (obloha shora, teplý odraz písku
     // zdola), plochý ambient nadzvedne absolutní černou.
-    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0xc2a988, 1.75)
+    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0xcbb191, 2.05)
     this.scene.add(this.hemi)
-    this.ambient = new THREE.AmbientLight(0xdce8ff, 0.32)
+    this.ambient = new THREE.AmbientLight(0xdce8ff, 0.45)
     this.scene.add(this.ambient)
 
     // přímé slunce mírnější → menší kontrast, stíny zůstávají čitelné ale měkčí
-    this.sun = new THREE.DirectionalLight(0xfff2d6, 1.35)
+    this.sun = new THREE.DirectionalLight(0xfff2d6, 1.3)
     this.sun.position.copy(sunDir).multiplyScalar(140).add(new THREE.Vector3(SIZE / 2, 0, SIZE / 2))
     this.sun.target.position.set(SIZE / 2, 0, SIZE / 2)
     this.sun.castShadow = true
@@ -177,6 +190,7 @@ class Game {
     this.sun.shadow.camera.far = 380
     this.sun.shadow.bias = -0.0004
     this.sun.shadow.normalBias = 0.03
+    this.sun.shadow.intensity = 0.45 // mírný stín místo skoro černého (stromy)
     this.scene.add(this.sun)
     this.scene.add(this.sun.target)
   }
@@ -219,13 +233,16 @@ class Game {
     }
 
     this.animals = new Animals(this.scene, this.world, mulberry32(seed ^ 0xabcdef), this.player.pos)
+    this.dinos = new Dinos(this.scene, this.world, mulberry32(seed ^ 0x5eed77), this.player.pos)
     this.goal = new Goal(this.scene, this.world, this.player.pos)
+    this.bonusMs = 0
     this.paused = false
   }
 
   _rebuildRound() {
     this.world.dispose()
     this.animals.dispose()
+    this.dinos.dispose()
     this.goal.dispose()
     this.particles.dispose()
     this._buildRound()
@@ -236,6 +253,7 @@ class Game {
     this.paused = false
     this.startTime = performance.now()
     this.elapsed = 0
+    this.bonusMs = 0
     this.audio.init() // user gesture — iOS vyžaduje
     this.ui.beginRun() // vyžádá anti-cheat token (fire-and-forget)
     this.controls.enabled = true
@@ -246,11 +264,13 @@ class Game {
   _win() {
     this.state = 'won'
     this.elapsed = performance.now() - this.startTime
+    const net = Math.max(0, this.elapsed - this.bonusMs)
     this.particles.confetti(this.goal.pos)
     this.audio.fanfare()
     this.controls.enabled = false
     this.controls.unlock()
-    this.ui.showWin(this.elapsed)
+    // net = zobrazený/uložený čas; raw + počet dinů pro serverové ověření
+    this.ui.showWin(net, this.elapsed, this.dinos.collectedCount)
   }
 
   _tick() {
@@ -280,7 +300,7 @@ class Game {
       }
 
       this.elapsed = performance.now() - this.startTime
-      this.ui.updateTimer(this.elapsed)
+      this.ui.updateTimer(Math.max(0, this.elapsed - this.bonusMs))
 
       if (this.goal.check(this.player.pos, this.player.height)) this._win()
     }
@@ -295,6 +315,13 @@ class Game {
     // svět žije i v menu (voda, mraky, zvířata, beacon)
     this.world.update(dt)
     this.animals.update(dt, this.player.pos, () => this.audio.squeak())
+    const collectible = this.state === 'playing' && !this.paused
+    this.dinos.update(dt, this.player.pos, collectible, dino => {
+      this.bonusMs += 10000
+      this.audio.bonus()
+      this.particles.confetti(dino.pos) // jiskřičky
+      this.ui.flashBonus(this.dinos.collectedCount, this.dinos.total)
+    })
     this.goal.update(dt)
     this.particles.update(dt)
 

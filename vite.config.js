@@ -106,14 +106,14 @@ function scoresMiddleware(req, res, next) {
     req.on('data', c => { body += c; if (body.length > 4096) req.destroy() })
     req.on('end', () => {
       try {
-        const { name: rawName, ms, token: runToken } = JSON.parse(body)
+        const { name: rawName, msRaw, dinos, token: runToken } = JSON.parse(body)
         const name = sanitizeName(rawName)
-        if (!name || typeof ms !== 'number' || !isFinite(ms) || ms < 3000 || ms > 3_600_000) {
+        if (!name || typeof msRaw !== 'number' || !isFinite(msRaw) || msRaw < 3000 || msRaw > 3_600_000) {
           res.statusCode = 400
           res.end(JSON.stringify({ error: 'Neplatné jméno nebo čas.' }))
           return
         }
-        const v = verifyToken(runToken, ms)
+        const v = verifyToken(runToken, msRaw) // váže hrubý čas
         if (v !== 'ok') {
           res.statusCode = 403
           const msg = v === 'tooFast' ? 'Čas neodpovídá délce hry.'
@@ -122,8 +122,10 @@ function scoresMiddleware(req, res, next) {
           res.end(JSON.stringify({ error: msg }))
           return
         }
+        const dinoCount = Math.max(0, Math.min(8, Math.floor(Number(dinos) || 0)))
+        const ms = Math.max(0, Math.round(msRaw) - dinoCount * 10000)
         const store = readStore()
-        store.scores.push({ name, ms: Math.round(ms), date: todayPrague(), ts: Date.now() })
+        store.scores.push({ name, ms, date: todayPrague(), ts: Date.now() })
         writeStore(store)
         res.end(JSON.stringify(boardPayload(store)))
       } catch {

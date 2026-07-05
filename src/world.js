@@ -63,16 +63,16 @@ function buildAtlasTexture() {
     }
   })
   drawTile(ctx, 0, 1, [226, 208, 158], 0.035)                 // sand
-  drawTile(ctx, 1, 1, [122, 92, 58], 0.04, (c, ox, oy, S) => { // wood side stripes
-    for (let x = 0; x < S; x += 5) { c.fillStyle = 'rgba(66,46,26,0.45)'; c.fillRect(ox + x, oy, 1, S) }
+  drawTile(ctx, 1, 1, [150, 112, 72], 0.04, (c, ox, oy, S) => { // wood side stripes
+    for (let x = 0; x < S; x += 5) { c.fillStyle = 'rgba(96,68,40,0.4)'; c.fillRect(ox + x, oy, 1, S) }
   })
-  drawTile(ctx, 2, 1, [148, 116, 74], 0.04, (c, ox, oy, S) => { // wood top rings
-    c.strokeStyle = 'rgba(90,64,36,0.6)'
+  drawTile(ctx, 2, 1, [176, 140, 92], 0.04, (c, ox, oy, S) => { // wood top rings
+    c.strokeStyle = 'rgba(120,90,54,0.55)'
     for (let r = 4; r < 16; r += 5) { c.strokeRect(ox + 16 - r, oy + 16 - r, r * 2, r * 2) }
   })
-  drawTile(ctx, 3, 1, [58, 132, 52], 0.09, (c, ox, oy, S, rng) => { // leaves holes
-    for (let i = 0; i < 20; i++) {
-      c.fillStyle = 'rgba(28,80,30,0.7)'
+  drawTile(ctx, 3, 1, [86, 176, 74], 0.085, (c, ox, oy, S, rng) => { // leaves holes
+    for (let i = 0; i < 18; i++) {
+      c.fillStyle = 'rgba(52,120,48,0.6)'
       c.fillRect(ox + (rng() * S | 0), oy + (rng() * S | 0), 2, 2)
     }
   })
@@ -135,9 +135,13 @@ export class World {
     this.time = 0
 
     this._generateTerrain()
+    this._raiseVolcano()   // vždy jedna sopka (mění bloky + heightmapu)
     this._plantPalms()
+    this._planMeadow()     // vybere plochý 8×8 patch pro louku
     this._buildMesh()
     this._buildWater()
+    this._buildVolcanoLava() // láva, světlo, kouř (samostatné meshe)
+    this._buildMeadow()    // květiny (InstancedMesh)
     this._buildClouds()
     this._buildFireflies()
 
@@ -242,6 +246,155 @@ export class World {
       this.setBlock(x + 3, ty - 1, z, LEAVES); this.setBlock(x - 3, ty - 1, z, LEAVES)
       this.setBlock(x, ty - 1, z + 3, LEAVES); this.setBlock(x, ty - 1, z - 3, LEAVES)
     }
+  }
+
+  // ── sopka (vždy jedna) ──
+  _raiseVolcano() {
+    let cx = SIZE / 2, cz = SIZE / 2, best = -1
+    for (let i = 0; i < 500; i++) {
+      const x = 46 + Math.floor(this.rng() * (SIZE - 92))
+      const z = 46 + Math.floor(this.rng() * (SIZE - 92))
+      const h = this.heightMap[z * SIZE + x]
+      if (h > best && h >= WATER_LEVEL + 1) { best = h; cx = x; cz = z }
+      if (best > WATER_LEVEL + 4) break
+    }
+    const baseH = this.heightMap[cz * SIZE + cx]
+    const baseR = 15
+    const peakH = HEIGHT - 2
+    const craterR = 4
+    const craterDepth = 4
+    for (let dz = -baseR; dz <= baseR; dz++) {
+      for (let dx = -baseR; dx <= baseR; dx++) {
+        const x = cx + dx, z = cz + dz
+        if (x < 1 || z < 1 || x >= SIZE - 1 || z >= SIZE - 1) continue
+        const d = Math.sqrt(dx * dx + dz * dz)
+        if (d > baseR) continue
+        const t = 1 - d / baseR
+        const top = Math.round(baseH + (peakH - baseH) * t * t) // t² = strmější vrchol
+        for (let y = 0; y <= top; y++) {
+          if (!this.isSolid(x, y, z)) this.setBlock(x, y, z, STONE)
+        }
+        let solidTop = top
+        if (d < craterR) { // kráter
+          const floor = top - craterDepth
+          for (let y = floor + 1; y <= top + 2; y++) this.setBlock(x, y, z, AIR)
+          solidTop = floor
+        }
+        this.heightMap[z * SIZE + x] = Math.max(this.heightMap[z * SIZE + x], solidTop)
+      }
+    }
+    this.volcano = { x: cx, z: cz, craterFloorY: peakH - craterDepth, craterR }
+  }
+
+  _buildVolcanoLava() {
+    const v = this.volcano
+    // procedurální lávová textura (emissive → chytá bloom)
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 64
+    const ctx = canvas.getContext('2d')
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+      const r = this.rng()
+      ctx.fillStyle = r < 0.15 ? '#ffe25a' : r < 0.5 ? '#ff7a1e' : '#d83a10'
+      ctx.fillRect(x, y, 1, 1)
+    }
+    const lavaTex = new THREE.CanvasTexture(canvas)
+    lavaTex.colorSpace = THREE.SRGBColorSpace
+    lavaTex.magFilter = THREE.NearestFilter
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x2a0f04, emissive: 0xff5a1e, emissiveMap: lavaTex, map: lavaTex,
+      emissiveIntensity: 1.7, roughness: 0.7,
+    })
+    const geo = new THREE.CircleGeometry(v.craterR - 0.15, 26)
+    geo.rotateX(-Math.PI / 2)
+    this.lava = new THREE.Mesh(geo, mat)
+    this.lava.position.set(v.x + 0.5, v.craterFloorY + 0.7, v.z + 0.5)
+    this.group.add(this.lava)
+
+    this.lavaLight = new THREE.PointLight(0xff6a22, 26, 34)
+    this.lavaLight.position.set(v.x + 0.5, v.craterFloorY + 2.5, v.z + 0.5)
+    this.group.add(this.lavaLight)
+
+    // stoupající kouř
+    const N = 70
+    this.smokeBaseY = v.craterFloorY + 1
+    this.smokeY = new Float32Array(N)
+    const pos = new Float32Array(N * 3)
+    for (let i = 0; i < N; i++) {
+      this.smokeY[i] = this.rng() * 26
+      pos[i * 3 + 0] = v.x + 0.5 + (this.rng() - 0.5) * 3
+      pos[i * 3 + 1] = this.smokeBaseY + this.smokeY[i]
+      pos[i * 3 + 2] = v.z + 0.5 + (this.rng() - 0.5) * 3
+    }
+    const sgeo = new THREE.BufferGeometry()
+    sgeo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    const smat = new THREE.PointsMaterial({
+      color: 0x6b6157, size: 2.6, transparent: true, opacity: 0.42,
+      depthWrite: false, sizeAttenuation: true,
+    })
+    this.smoke = new THREE.Points(sgeo, smat)
+    this.group.add(this.smoke)
+    this.volcanoPos = new THREE.Vector3(v.x + 0.5, v.craterFloorY, v.z + 0.5)
+  }
+
+  // ── květnatá louka (max 8×8) ──
+  _planMeadow() {
+    const v = this.volcano
+    for (let i = 0; i < 800; i++) {
+      const x0 = 6 + Math.floor(this.rng() * (SIZE - 22))
+      const z0 = 6 + Math.floor(this.rng() * (SIZE - 22))
+      if (v && Math.hypot(x0 + 4 - v.x, z0 + 4 - v.z) < 24) continue
+      const h0 = this.heightMap[z0 * SIZE + x0]
+      if (h0 <= WATER_LEVEL + 1) continue
+      let ok = true
+      for (let dz = 0; dz < 8 && ok; dz++) {
+        for (let dx = 0; dx < 8; dx++) {
+          const h = this.heightMap[(z0 + dz) * SIZE + (x0 + dx)]
+          if (Math.abs(h - h0) > 1 || h <= WATER_LEVEL + 1) { ok = false; break }
+        }
+      }
+      if (ok) { this.meadow = { x0, z0 }; return }
+    }
+    this.meadow = null
+  }
+
+  _buildMeadow() {
+    if (!this.meadow) return
+    const { x0, z0 } = this.meadow
+    const cells = []
+    for (let dz = 0; dz < 8; dz++) {
+      for (let dx = 0; dx < 8; dx++) {
+        if (this.rng() < 0.72) cells.push([x0 + dx, z0 + dz])
+      }
+    }
+    const n = cells.length
+    const stemGeo = new THREE.BoxGeometry(0.06, 0.34, 0.06)
+    const stemMat = new THREE.MeshLambertMaterial({ color: 0x2f9a3e })
+    const stems = new THREE.InstancedMesh(stemGeo, stemMat, n)
+    const bloomGeo = new THREE.BoxGeometry(0.24, 0.24, 0.24)
+    const bloomMat = new THREE.MeshLambertMaterial()
+    const blooms = new THREE.InstancedMesh(bloomGeo, bloomMat, n)
+    const palette = [0xff5566, 0xffd23f, 0xffffff, 0xff8fc7, 0xb56cff, 0xff9a3d, 0x6ad1ff]
+    const mtx = new THREE.Matrix4()
+    const col = new THREE.Color()
+    for (let i = 0; i < n; i++) {
+      const [x, z] = cells[i]
+      const gy = this.heightMap[z * SIZE + x]
+      const ox = x + 0.25 + this.rng() * 0.5
+      const oz = z + 0.25 + this.rng() * 0.5
+      mtx.makeTranslation(ox, gy + 0.17, oz); stems.setMatrixAt(i, mtx)
+      mtx.makeTranslation(ox, gy + 0.44, oz); blooms.setMatrixAt(i, mtx)
+      col.setHex(palette[Math.floor(this.rng() * palette.length)])
+      blooms.setColorAt(i, col)
+    }
+    stems.instanceMatrix.needsUpdate = true
+    blooms.instanceMatrix.needsUpdate = true
+    if (blooms.instanceColor) blooms.instanceColor.needsUpdate = true
+    stems.castShadow = true
+    blooms.castShadow = true
+    this.group.add(stems)
+    this.group.add(blooms)
+    this.meadowCenter = new THREE.Vector3(x0 + 4, this.heightMap[(z0 + 4) * SIZE + (x0 + 4)], z0 + 4)
   }
 
   // ── meshing s per-vertex AO ──
@@ -492,6 +645,22 @@ export class World {
     }
     pos.needsUpdate = true
     this.fireflies.material.opacity = 0.55 + Math.sin(this.time * 1.8) * 0.25
+
+    // sopka: pulzující žár + stoupající kouř
+    if (this.lava) {
+      const glow = 1.5 + Math.sin(this.time * 2.4) * 0.35 + Math.sin(this.time * 7) * 0.1
+      this.lava.material.emissiveIntensity = glow
+      this.lavaLight.intensity = 22 + Math.sin(this.time * 2.4) * 6
+      const sp = this.smoke.geometry.attributes.position
+      for (let i = 0; i < this.smokeY.length; i++) {
+        this.smokeY[i] += dt * (1.6 + (i % 3) * 0.4)
+        if (this.smokeY[i] > 26) this.smokeY[i] = 0
+        sp.array[i * 3 + 1] = this.smokeBaseY + this.smokeY[i]
+        sp.array[i * 3 + 0] += Math.sin(this.time * 0.6 + i) * dt * 0.5
+        sp.array[i * 3 + 2] += Math.cos(this.time * 0.5 + i) * dt * 0.5
+      }
+      sp.needsUpdate = true
+    }
   }
 
   dispose() {

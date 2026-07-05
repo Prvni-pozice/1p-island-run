@@ -102,13 +102,14 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { name: rawName, ms, token: runToken } = req.body || {}
+    const { name: rawName, msRaw, dinos, token: runToken } = req.body || {}
     const name = sanitizeName(rawName)
-    if (!name || typeof ms !== 'number' || !isFinite(ms) || ms < 3000 || ms > 3_600_000) {
+    if (!name || typeof msRaw !== 'number' || !isFinite(msRaw) || msRaw < 3000 || msRaw > 3_600_000) {
       res.status(400).json({ error: 'Neplatné jméno nebo čas.' })
       return
     }
-    const v = verifyToken(secret, runToken, ms)
+    // anti-cheat váže HRUBÝ čas (net může být díky bonusům mnohem nižší)
+    const v = verifyToken(secret, runToken, msRaw)
     if (v !== 'ok') {
       const msg = v === 'tooFast' ? 'Čas neodpovídá délce hry.'
         : v === 'expired' ? 'Platnost kola vypršela, zahraj znovu.'
@@ -116,8 +117,10 @@ export default async function handler(req, res) {
       res.status(403).json({ error: msg })
       return
     }
+    const dinoCount = Math.max(0, Math.min(8, Math.floor(Number(dinos) || 0)))
+    const ms = Math.max(0, Math.round(msRaw) - dinoCount * 10000) // net čas
     const store = await kvGet(url, token)
-    store.scores.push({ name, ms: Math.round(ms), date: todayPrague(), ts: Date.now() })
+    store.scores.push({ name, ms, date: todayPrague(), ts: Date.now() })
     // pojistka proti nekonečnému růstu: drž max 5000 posledních záznamů
     if (store.scores.length > 5000) store.scores = store.scores.slice(-5000)
     await kvSet(url, token, store)

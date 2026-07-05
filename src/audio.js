@@ -91,6 +91,14 @@ export class AudioFX {
     this._tone({ dur: 0.08, type: 'triangle', f0: f * 1.3, f1: f * 0.9, gain: 0.14, delay: 0.09 })
   }
 
+  bonus() {
+    if (!this._ready()) return
+    // veselý vzestupný trylek
+    const notes = [659.25, 880, 1174.7]
+    notes.forEach((f, i) => this._tone({ dur: 0.16, type: 'triangle', f0: f, f1: f * 1.05, gain: 0.28, delay: i * 0.07 }))
+    this._tone({ dur: 0.3, type: 'sine', f0: 1318.5, gain: 0.14, delay: 0.21 })
+  }
+
   fanfare() {
     if (!this._ready()) return
     const notes = [523.25, 659.25, 783.99, 1046.5] // C5 E5 G5 C6

@@ -24,11 +24,13 @@ export async function requestSession() {
   return d.token || null
 }
 
-export async function submitScore(name, ms, token) {
+// msRaw = hrubý odehraný čas; dinos = počet sebraných (bonus -10 s/kus).
+// Net čas počítá server, aby anti-cheat dál vázal reálně strávený čas.
+export async function submitScore(name, msRaw, dinos, token) {
   const r = await fetch('/api/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, ms, token }),
+    body: JSON.stringify({ name, msRaw, dinos, token }),
   })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)
