@@ -4,7 +4,37 @@
 // ve Vercel dashboardu (Storage → Create → KV). Bez nich vrací 501.
 // Stejná logika jako lokální middleware ve vite.config.js.
 
+import crypto from 'node:crypto'
+
 const KEY = '1p-island-run-scores'
+const TOKEN_MAX_AGE_MS = 2 * 3600 * 1000 // token platí 2 h
+const TIME_TOLERANCE_MS = 2500           // sklouz hodin / latence
+
+// ── podepsaný session token (anti-cheat) ────────────────────────────
+// Klíč je server-only env (nikdy v client bundlu). Token nese čas vydání;
+// při ukládání ověříme, že od vydání uplynul aspoň naměřený čas → nelze
+// poslat falešný „instantní" rekord přes curl.
+function signToken(secret) {
+  const issued = Date.now()
+  const nonce = crypto.randomBytes(8).toString('hex')
+  const sig = crypto.createHmac('sha256', secret).update(`${issued}.${nonce}`).digest('hex')
+  return `${issued}.${nonce}.${sig}`
+}
+function verifyToken(secret, token, ms) {
+  if (typeof token !== 'string') return 'missing'
+  const parts = token.split('.')
+  if (parts.length !== 3) return 'bad'
+  const [issuedStr, nonce, sig] = parts
+  const issued = parseInt(issuedStr, 10)
+  if (!isFinite(issued)) return 'bad'
+  const expected = crypto.createHmac('sha256', secret).update(`${issued}.${nonce}`).digest('hex')
+  const a = Buffer.from(sig), b = Buffer.from(expected)
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return 'bad'
+  const age = Date.now() - issued
+  if (age < 0 || age > TOKEN_MAX_AGE_MS) return 'expired'
+  if (age < ms - TIME_TOLERANCE_MS) return 'tooFast' // doběhl rychleji než token žije
+  return 'ok'
+}
 
 function todayPrague() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Prague' }).format(new Date())
@@ -58,17 +88,32 @@ export default async function handler(req, res) {
     return
   }
 
+  // podpisový klíč: dedikovaný env, jinak KV token (taky server-only)
+  const secret = process.env.SIGNING_SECRET || token
+
   if (req.method === 'GET') {
+    if (req.query && req.query.session) {
+      res.status(200).json({ token: signToken(secret) })
+      return
+    }
     const store = await kvGet(url, token)
     res.status(200).json(boardPayload(store))
     return
   }
 
   if (req.method === 'POST') {
-    const { name: rawName, ms } = req.body || {}
+    const { name: rawName, ms, token: runToken } = req.body || {}
     const name = sanitizeName(rawName)
     if (!name || typeof ms !== 'number' || !isFinite(ms) || ms < 3000 || ms > 3_600_000) {
       res.status(400).json({ error: 'Neplatné jméno nebo čas.' })
+      return
+    }
+    const v = verifyToken(secret, runToken, ms)
+    if (v !== 'ok') {
+      const msg = v === 'tooFast' ? 'Čas neodpovídá délce hry.'
+        : v === 'expired' ? 'Platnost kola vypršela, zahraj znovu.'
+        : 'Kolo nelze ověřit, zahraj znovu.'
+      res.status(403).json({ error: msg })
       return
     }
     const store = await kvGet(url, token)

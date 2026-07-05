@@ -16,11 +16,19 @@ export async function fetchBoard() {
   return r.json()
 }
 
-export async function submitScore(name, ms) {
+// Podepsaný token na začátku kola — server jím ověří platnost času.
+export async function requestSession() {
+  const r = await fetch('/api/scores?session=1')
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const d = await r.json()
+  return d.token || null
+}
+
+export async function submitScore(name, ms, token) {
   const r = await fetch('/api/scores', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, ms }),
+    body: JSON.stringify({ name, ms, token }),
   })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`)

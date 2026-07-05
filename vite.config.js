@@ -1,7 +1,37 @@
 import { defineConfig } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+
+// ── anti-cheat token (stejná logika jako Vercel api/scores.js) ──────
+// Lokální podpisový klíč platí v rámci běhu serveru (restart = nová sada
+// tokenů; pro testovací VPS dostačuje).
+const SIGN_SECRET = crypto.randomBytes(32).toString('hex')
+const TOKEN_MAX_AGE_MS = 2 * 3600 * 1000
+const TIME_TOLERANCE_MS = 2500
+
+function signToken() {
+  const issued = Date.now()
+  const nonce = crypto.randomBytes(8).toString('hex')
+  const sig = crypto.createHmac('sha256', SIGN_SECRET).update(`${issued}.${nonce}`).digest('hex')
+  return `${issued}.${nonce}.${sig}`
+}
+function verifyToken(token, ms) {
+  if (typeof token !== 'string') return 'missing'
+  const parts = token.split('.')
+  if (parts.length !== 3) return 'bad'
+  const [issuedStr, nonce, sig] = parts
+  const issued = parseInt(issuedStr, 10)
+  if (!isFinite(issued)) return 'bad'
+  const expected = crypto.createHmac('sha256', SIGN_SECRET).update(`${issued}.${nonce}`).digest('hex')
+  const a = Buffer.from(sig), b = Buffer.from(expected)
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return 'bad'
+  const age = Date.now() - issued
+  if (age < 0 || age > TOKEN_MAX_AGE_MS) return 'expired'
+  if (age < ms - TIME_TOLERANCE_MS) return 'tooFast'
+  return 'ok'
+}
 
 // ── Lokální /api/scores (dev i preview server) ──────────────────────
 // Stejné API jako Vercel funkce v /api/scores.js — hra volá relativní
@@ -59,6 +89,10 @@ function scoresMiddleware(req, res, next) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
 
   if (req.method === 'GET') {
+    if (req.url.includes('session=')) {
+      res.end(JSON.stringify({ token: signToken() }))
+      return
+    }
     res.end(JSON.stringify(boardPayload(readStore())))
     return
   }
@@ -72,11 +106,20 @@ function scoresMiddleware(req, res, next) {
     req.on('data', c => { body += c; if (body.length > 4096) req.destroy() })
     req.on('end', () => {
       try {
-        const { name: rawName, ms } = JSON.parse(body)
+        const { name: rawName, ms, token: runToken } = JSON.parse(body)
         const name = sanitizeName(rawName)
         if (!name || typeof ms !== 'number' || !isFinite(ms) || ms < 3000 || ms > 3_600_000) {
           res.statusCode = 400
           res.end(JSON.stringify({ error: 'Neplatné jméno nebo čas.' }))
+          return
+        }
+        const v = verifyToken(runToken, ms)
+        if (v !== 'ok') {
+          res.statusCode = 403
+          const msg = v === 'tooFast' ? 'Čas neodpovídá délce hry.'
+            : v === 'expired' ? 'Platnost kola vypršela, zahraj znovu.'
+            : 'Kolo nelze ověřit, zahraj znovu.'
+          res.end(JSON.stringify({ error: msg }))
           return
         }
         const store = readStore()

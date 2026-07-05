@@ -1,6 +1,6 @@
 // ui.js — start screen, HUD (čas + rekord), win overlay, žebříček,
 // localStorage rekord. Jména hráčů se vykreslují výhradně přes textContent.
-import { fetchBoard, submitScore, getSavedName, saveName } from './leaderboard.js'
+import { fetchBoard, submitScore, requestSession, getSavedName, saveName } from './leaderboard.js'
 
 const BEST_KEY = '1p-island-run-best-ms'
 
@@ -30,6 +30,7 @@ export class UI {
     this.nameInput = document.getElementById('player-name')
     this.lastBoard = null
     this.lastRunMs = null
+    this.runToken = null
 
     if (isTouch) {
       document.getElementById('instructions-desktop').style.display = 'none'
@@ -148,6 +149,12 @@ export class UI {
     }
   }
 
+  // Zavolat na startu kola — vyžádá podepsaný token pro ověření času.
+  async beginRun() {
+    this.runToken = null
+    try { this.runToken = await requestSession() } catch { /* offline → submit selže hláškou */ }
+  }
+
   async _submit() {
     if (this.lastRunMs == null) return
     const name = this.nameInput.value.trim()
@@ -157,7 +164,8 @@ export class UI {
     btn.disabled = true
     btn.textContent = 'Ukládám…'
     try {
-      this.lastBoard = await submitScore(name, this.lastRunMs)
+      if (!this.runToken) this.runToken = await requestSession() // fallback
+      this.lastBoard = await submitScore(name, this.lastRunMs, this.runToken)
       this.saveScoreBox.classList.add('done')
       this._renderAll()
     } catch (e) {

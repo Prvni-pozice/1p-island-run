@@ -227,6 +227,7 @@ class Game {
     this.startTime = performance.now()
     this.elapsed = 0
     this.audio.init() // user gesture — iOS vyžaduje
+    this.ui.beginRun() // vyžádá anti-cheat token (fire-and-forget)
     this.controls.enabled = true
     this.controls.lock()
     this.ui.showPlaying(this.touch)
