@@ -268,29 +268,32 @@ export class World {
     const baseH = this.heightMap[cz * SIZE + cx]
     const baseR = 15
     const peakH = HEIGHT - 2
-    const craterR = 4
+    const craterR = 4.2
     const craterDepth = 4
+    // rim (okraj kráteru) = výška kužele v poloměru kráteru; uvnitř mísa
+    const rimY = Math.round(peakH - (craterR / baseR) * (peakH - baseH))
     for (let dz = -baseR; dz <= baseR; dz++) {
       for (let dx = -baseR; dx <= baseR; dx++) {
         const x = cx + dx, z = cz + dz
         if (x < 1 || z < 1 || x >= SIZE - 1 || z >= SIZE - 1) continue
         const d = Math.sqrt(dx * dx + dz * dz)
         if (d > baseR) continue
-        const t = 1 - d / baseR
-        const top = Math.round(baseH + (peakH - baseH) * t * t) // t² = strmější vrchol
-        for (let y = 0; y <= top; y++) {
-          if (!this.isSolid(x, y, z)) this.setBlock(x, y, z, STONE)
+        let solidTop
+        if (d < craterR) {
+          // mísa: nejhlubší uprostřed, okraj = rimY (vyvýšený val)
+          const bowl = craterDepth * (1 - (d / craterR) * (d / craterR))
+          solidTop = Math.round(rimY - bowl)
+        } else {
+          solidTop = Math.round(peakH - (d / baseR) * (peakH - baseH)) // kužel
         }
-        let solidTop = top
-        if (d < craterR) { // kráter
-          const floor = top - craterDepth
-          for (let y = floor + 1; y <= top + 2; y++) this.setBlock(x, y, z, AIR)
-          solidTop = floor
+        for (let y = 0; y <= solidTop; y++) {
+          if (!this.isSolid(x, y, z)) this.setBlock(x, y, z, STONE)
         }
         this.heightMap[z * SIZE + x] = Math.max(this.heightMap[z * SIZE + x], solidTop)
       }
     }
-    this.volcano = { x: cx, z: cz, craterFloorY: peakH - craterDepth, craterR }
+    // dno mísy uprostřed = rimY - craterDepth; lávové jezírko sahá po rimY
+    this.volcano = { x: cx, z: cz, craterR, rimY, craterDepth, bowlBottomY: rimY - craterDepth }
   }
 
   _buildVolcanoLava() {
@@ -308,51 +311,75 @@ export class World {
     lavaTex.colorSpace = THREE.SRGBColorSpace
     lavaTex.magFilter = THREE.NearestFilter
 
-    const mat = new THREE.MeshStandardMaterial({
+    // vrchol sopky = poslední 3 vrstvy kostek z žhnoucí lávy (kupolovitě na
+    // kráteru, sedí na pevném dně kráteru — nelevituje)
+    this.lavaMat = new THREE.MeshStandardMaterial({
       color: 0x2a0f04, emissive: 0xff5a1e, emissiveMap: lavaTex, map: lavaTex,
       emissiveIntensity: 1.7, roughness: 0.7,
     })
-    const geo = new THREE.CircleGeometry(v.craterR - 0.15, 26)
-    geo.rotateX(-Math.PI / 2)
-    this.lava = new THREE.Mesh(geo, mat)
-    this.lava.position.set(v.x + 0.5, v.craterFloorY + 0.7, v.z + 0.5)
-    this.group.add(this.lava)
+    // lávové jezírko vyplní mísu kráteru: od dna (dle sklonu mísy) po hladinu
+    // u okraje (rimY). Kostky tak sedí v míse, nelevitují.
+    const cubes = []
+    const cr = Math.ceil(v.craterR)
+    for (let dz = -cr; dz <= cr; dz++) {
+      for (let dx = -cr; dx <= cr; dx++) {
+        const d = Math.sqrt(dx * dx + dz * dz)
+        if (d >= v.craterR) continue // uvnitř valu
+        const bowl = v.craterDepth * (1 - (d / v.craterR) * (d / v.craterR))
+        const floorTop = Math.round(v.rimY - bowl) // pevné dno mísy zde
+        for (let y = floorTop + 1; y <= v.rimY; y++) { // láva po hladinu (rimY)
+          cubes.push([v.x + dx, y, v.z + dz])
+          this.setBlock(v.x + dx, y, v.z + dz, STONE) // kolize (mesh už hotový)
+        }
+      }
+    }
+    this.lavaCubes = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.lavaMat, cubes.length)
+    const cmtx = new THREE.Matrix4()
+    for (let i = 0; i < cubes.length; i++) {
+      const [x, y, z] = cubes[i]
+      cmtx.makeTranslation(x + 0.5, y + 0.5, z + 0.5)
+      this.lavaCubes.setMatrixAt(i, cmtx)
+    }
+    this.lavaCubes.instanceMatrix.needsUpdate = true
+    this.group.add(this.lavaCubes)
 
-    // žhnoucí prstenec lávy na okraji kráteru (na vrcholu)
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: 0x2a0f04, emissive: 0xff6a26, emissiveMap: lavaTex, map: lavaTex,
-      emissiveIntensity: 1.9, roughness: 0.65,
-    })
-    const ringGeo = new THREE.TorusGeometry(v.craterR - 0.5, 0.4, 10, 26)
-    ringGeo.rotateX(-Math.PI / 2)
-    this.lavaRing = new THREE.Mesh(ringGeo, ringMat)
-    this.lavaRing.position.set(v.x + 0.5, v.craterFloorY + 1.15, v.z + 0.5)
-    this.group.add(this.lavaRing)
-
-    this.lavaLight = new THREE.PointLight(0xff6a22, 26, 34)
-    this.lavaLight.position.set(v.x + 0.5, v.craterFloorY + 2.5, v.z + 0.5)
+    this.lavaLight = new THREE.PointLight(0xff6a22, 26, 40)
+    this.lavaLight.position.set(v.x + 0.5, v.rimY + 3, v.z + 0.5)
     this.group.add(this.lavaLight)
 
-    // stoupající kouř
-    const N = 70
-    this.smokeBaseY = v.craterFloorY + 1
+    // ── stoupající kouř: měkké kulaté chuchvalce (radiální sprite) ──
+    const sc = document.createElement('canvas')
+    sc.width = sc.height = 64
+    const sctx = sc.getContext('2d')
+    const grad = sctx.createRadialGradient(32, 32, 0, 32, 32, 32)
+    grad.addColorStop(0, 'rgba(255,255,255,1)')
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.45)')
+    grad.addColorStop(1, 'rgba(255,255,255,0)')
+    sctx.fillStyle = grad
+    sctx.fillRect(0, 0, 64, 64)
+    const smokeSprite = new THREE.CanvasTexture(sc)
+
+    const N = 96
+    this.smokeMaxH = 34
+    this.smokeBaseY = v.rimY + 1
     this.smokeY = new Float32Array(N)
     const pos = new Float32Array(N * 3)
     for (let i = 0; i < N; i++) {
-      this.smokeY[i] = this.rng() * 26
-      pos[i * 3 + 0] = v.x + 0.5 + (this.rng() - 0.5) * 3
+      this.smokeY[i] = this.rng() * this.smokeMaxH
+      const spread = 1 + this.smokeY[i] * 0.13
+      pos[i * 3 + 0] = v.x + 0.5 + (this.rng() - 0.5) * spread
       pos[i * 3 + 1] = this.smokeBaseY + this.smokeY[i]
-      pos[i * 3 + 2] = v.z + 0.5 + (this.rng() - 0.5) * 3
+      pos[i * 3 + 2] = v.z + 0.5 + (this.rng() - 0.5) * spread
     }
     const sgeo = new THREE.BufferGeometry()
     sgeo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     const smat = new THREE.PointsMaterial({
-      color: 0x6b6157, size: 2.6, transparent: true, opacity: 0.42,
-      depthWrite: false, sizeAttenuation: true,
+      map: smokeSprite, color: 0xa79e94, size: 4.4,
+      transparent: true, opacity: 0.34, depthWrite: false, sizeAttenuation: true,
     })
     this.smoke = new THREE.Points(sgeo, smat)
     this.group.add(this.smoke)
-    this.volcanoPos = new THREE.Vector3(v.x + 0.5, v.craterFloorY, v.z + 0.5)
+    this.volcanoPos = new THREE.Vector3(v.x + 0.5, v.rimY, v.z + 0.5)
   }
 
   // ── květnatá louka (max 8×8) ──
@@ -665,18 +692,23 @@ export class World {
     this.fireflies.material.opacity = 0.55 + Math.sin(this.time * 1.8) * 0.25
 
     // sopka: pulzující žár + stoupající kouř
-    if (this.lava) {
+    if (this.lavaCubes) {
       const glow = 1.5 + Math.sin(this.time * 2.4) * 0.35 + Math.sin(this.time * 7) * 0.1
-      this.lava.material.emissiveIntensity = glow
-      if (this.lavaRing) this.lavaRing.material.emissiveIntensity = 1.7 + Math.sin(this.time * 2.4 + 1) * 0.4
+      this.lavaMat.emissiveIntensity = glow
       this.lavaLight.intensity = 22 + Math.sin(this.time * 2.4) * 6
       const sp = this.smoke.geometry.attributes.position
+      const cx = this.volcanoPos.x, cz = this.volcanoPos.z
       for (let i = 0; i < this.smokeY.length; i++) {
-        this.smokeY[i] += dt * (1.6 + (i % 3) * 0.4)
-        if (this.smokeY[i] > 26) this.smokeY[i] = 0
+        this.smokeY[i] += dt * (1.5 + (i % 3) * 0.35)
+        if (this.smokeY[i] > this.smokeMaxH) { // recyklace u dna
+          this.smokeY[i] = 0
+          sp.array[i * 3 + 0] = cx + Math.sin(i * 12.9898) * 0.7
+          sp.array[i * 3 + 2] = cz + Math.cos(i * 7.233) * 0.7
+        }
+        const spread = 1 + this.smokeY[i] * 0.14 // rozšiřuje se s výškou
         sp.array[i * 3 + 1] = this.smokeBaseY + this.smokeY[i]
-        sp.array[i * 3 + 0] += Math.sin(this.time * 0.6 + i) * dt * 0.5
-        sp.array[i * 3 + 2] += Math.cos(this.time * 0.5 + i) * dt * 0.5
+        sp.array[i * 3 + 0] += Math.sin(this.time * 0.5 + i) * dt * 0.28 * spread
+        sp.array[i * 3 + 2] += Math.cos(this.time * 0.45 + i) * dt * 0.28 * spread
       }
       sp.needsUpdate = true
     }

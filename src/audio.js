@@ -84,11 +84,30 @@ export class AudioFX {
     this._noise({ dur: 0.4, filterType: 'lowpass', f0: 1400, f1: 260, gain: 0.7 })
   }
 
-  // šustění trávy / hrabání sena při chůzi loukou
+  // šustění trávy / hrabání sena při chůzi loukou — měkký šum se sweepem
+  // (dlouhý „šššp", ne krátké praskavé údery)
   grass() {
     if (!this._ready()) return
-    this._noise({ dur: 0.14, filterType: 'highpass', f0: 1900, gain: 0.34 })
-    this._noise({ dur: 0.10, filterType: 'bandpass', f0: 2900 + Math.random() * 1000, gain: 0.24 })
+    const t = this.ctx.currentTime
+    const dur = 0.28 + Math.random() * 0.12
+    const src = this.ctx.createBufferSource()
+    src.buffer = this.noiseBuf
+    src.loop = true
+    const bp = this.ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.Q.value = 0.6 // široké pásmo = přirozené šustění, ne pískavé
+    const f0 = 1500 + Math.random() * 500
+    bp.frequency.setValueAtTime(f0, t)
+    bp.frequency.linearRampToValueAtTime(f0 * 1.7, t + dur) // jemný sweep = pohyb stébel
+    const hp = this.ctx.createBiquadFilter()
+    hp.type = 'highpass'; hp.frequency.value = 650
+    const g = this.ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.linearRampToValueAtTime(0.2, t + 0.05) // měkký nástup (žádný lupanec)
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur)
+    src.connect(bp).connect(hp).connect(g).connect(this.master)
+    src.start(t)
+    src.stop(t + dur + 0.02)
   }
 
   squeak() {
